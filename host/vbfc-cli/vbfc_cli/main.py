@@ -16,6 +16,7 @@ from pathlib import Path
 import click
 
 from vbfc_cli.device import open_device
+from vbfc_cli.crypto import generate_keypair, sign_payload, verify_image, DEFAULT_KEY_DIR
 
 
 def parse_int(value: str) -> int:
@@ -381,6 +382,60 @@ def sniff_dump(ctx, outfile):
             elif i == 8:
                 click.echo("  ...")
         click.echo("Summary: " + ", ".join(f"{k}={v}" for k, v in clicks.items() if v))
+
+
+# --- key management ----------------------------------------------------------
+@cli.group("key")
+def key_cmd() -> None:
+    """Manage signing keys."""
+
+@key_cmd.command("gen")
+def key_gen() -> None:
+    """Generate a 32-byte HMAC-SHA256 key and save to ~/.vbfc/."""
+    generate_keypair(DEFAULT_KEY_DIR)
+
+
+# --- image signing -----------------------------------------------------------
+@cli.group("image")
+def image_cmd() -> None:
+    """Sign and verify firmware images."""
+
+@image_cmd.command("sign")
+@click.argument("infile", type=click.Path(exists=True))
+@click.argument("outfile", type=click.Path())
+@click.option("--version", default=1, help="Image version (monotonic anti-rollback)")
+@click.option("--key", default=None, help="Path to HMAC key file (default ~/.vbfc/hmac.key)")
+@click.pass_context
+def image_sign(ctx: click.Context, infile: str, outfile: str, version: int, key: str | None) -> None:
+    """Sign a raw firmware image with HMAC-SHA256 and prepend the 256-byte header."""
+    key_path = Path(key) if key else (DEFAULT_KEY_DIR / "hmac.key")
+    if not key_path.exists():
+        click.echo(f"Key not found: {key_path}. Generate one with `vbfc-cli key gen`.")
+        raise click.Abort()
+    key_data = key_path.read_bytes()
+    payload = Path(infile).read_bytes()
+    signed = sign_payload(payload, key_data, image_version=version)
+    Path(outfile).write_bytes(signed)
+    click.echo(f"Signed image written to {outfile} ({len(signed)} bytes, v{version})")
+
+@image_cmd.command("verify")
+@click.argument("infile", type=click.Path(exists=True))
+@click.option("--key", default=None, help="Path to HMAC key file (default ~/.vbfc/hmac.key)")
+@click.pass_context
+def image_verify(ctx: click.Context, infile: str, key: str | None) -> None:
+    """Verify the signed image header HMAC-SHA256."""
+    key_path = Path(key) if key else (DEFAULT_KEY_DIR / "hmac.key")
+    if not key_path.exists():
+        click.echo(f"Key not found: {key_path}.")
+        raise click.Abort()
+    key_data = key_path.read_bytes()
+    signed = Path(infile).read_bytes()
+    result = verify_image(signed, key_data)
+    for k, v in result.items():
+        click.echo(f"{k:>15}: {v}")
+    if not result.get("valid"):
+        click.echo("SIGNATURE INVALID — do not upload this image.")
+        raise click.Abort()
 
 
 # --- factory reset ----------------------------------------------------------

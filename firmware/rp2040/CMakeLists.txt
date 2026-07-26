@@ -22,6 +22,8 @@ add_executable(vbfc_controller
     src/config_store.c
     src/b64.c
     src/vbfc_crc.c
+    src/vbfc_sha256.c
+    src/image_check.c
     src/proto_binary.c
     src/sniffer.c
     src/usb_service.c

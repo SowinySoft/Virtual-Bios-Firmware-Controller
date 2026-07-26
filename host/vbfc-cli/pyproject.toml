@@ -11,6 +11,7 @@ requires-python = ">=3.10"
 dependencies = [
     "pyserial>=3.5",
     "click>=8.1",
+    "cryptography>=42.0",
 ]
 
 [project.scripts]

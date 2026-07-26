@@ -10,6 +10,7 @@
 #include "ext_flash.h"
 #include "orig_flash.h"
 #include "sniffer.h"   /* for DUMP SNIFF */
+#include "image_check.h" /* signature verification at ULOAD DONE */
 
 /* Raw payload per chunk. Base64 expands 3:4, so 768 -> 1024 chars; that plus
  * the "ULOAD CHUNK " / "DUMP CHUNK " prefix fits in a modest line buffer. */
@@ -148,6 +149,33 @@ static void up_done(uint32_t expected_crc) {
                (unsigned long)g_up.crc, (unsigned long)expected_crc);
         return;
     }
+
+    /* ── Phase A: signature verification after transport checks ──────────
+     * If the uploaded data has a valid signed-image header at the dest
+     * offset, verify it. On failure, erase the uploaded bytes — the host
+     * must re-upload a properly signed image. */
+    if (g_up.total_len >= VBFC_IMAGE_HDR_SIZE) {
+        if (!image_check_verify_header(g_up.dest_offset, NULL)) {
+            /* erase the uploaded range (incl. header) */
+            ext_flash_erase_range(g_up.dest_offset,
+                                  g_up.total_len + VBFC_IMAGE_HDR_SIZE);
+            printf("ERR signature\r\n");
+            return;
+        }
+
+        /* anti-rollback: read the just-verified header and check version */
+        vbfc_image_header_t hdr;
+        ext_flash_read_buf(g_up.dest_offset, (uint8_t *)&hdr, sizeof(hdr));
+        if (hdr.image_version < image_check_accepted_version()) {
+            ext_flash_erase_range(g_up.dest_offset,
+                                  g_up.total_len + VBFC_IMAGE_HDR_SIZE);
+            printf("ERR rollback\r\n");
+            return;
+        }
+        image_check_accept_version(hdr.image_version);
+        image_check_populate_cache(g_up.dest_offset);
+    }
+
     printf("OK upload-done\r\n");
 }
 

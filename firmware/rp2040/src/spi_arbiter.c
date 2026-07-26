@@ -11,6 +11,7 @@
 #include "orig_flash.h"
 #include "ext_flash.h"
 #include "safety.h"
+#include "image_check.h"
 
 #define SPI_CMD_READ       0x03
 #define SPI_CMD_FAST_READ  0x0B
@@ -181,7 +182,18 @@ static void enter_data_phase(void) {
     g_active_source = shadow_map_lookup(g_addr, &g_active_entry);
     prefetch_invalidate();
 
-    if (is_read_cmd(g_cmd) && g_active_source == VBFC_SOURCE_EXT) {
+    /* Phase A: signature gate. If the looked-up EXT bank hasn't been
+     * verified this boot (via image_check_verify_on_boot or a prior
+     * verified ULOAD), don't serve it — fall to the ORIG pass-through
+     * path below. The motherboard reads the real flash for this
+     * transaction. This is a per-transaction drop, not a permanent
+     * safety_fault(). */
+    bool sig_ok = true;
+    if (g_active_source == VBFC_SOURCE_EXT && !image_check_serve_allowed(g_active_entry.ext_offset)) {
+        sig_ok = false;
+    }
+
+    if (is_read_cmd(g_cmd) && g_active_source == VBFC_SOURCE_EXT && sig_ok) {
         orig_flash_sleep();
         gpio_put(PIN_ORIG_CS, 1);
         miso_mux_controller(true);

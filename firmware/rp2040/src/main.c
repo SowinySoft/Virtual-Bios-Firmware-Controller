@@ -13,6 +13,7 @@
 #include "patch_table.h"
 #include "usb_service.h"
 #include "safety.h"
+#include "image_check.h"
 
 #define VBFC_FW_VERSION "1.0.0"
 
@@ -59,9 +60,24 @@ int main(void) {
     orig_flash_init();
     ext_flash_init();
     spi_arbiter_init();
+    /* Must run after ext_flash_init() so the shadow map + image banks
+     * are readable. Verify signatures on all boot-mapped EXT banks. */
+    image_check_verify_on_boot();
 #else
     printf("SIM: SPI arbiter disabled\n");
 #endif
+
+    /* patch_table_load() reads from ext-flash (EXT_OFF_PATCH_META), so it
+    * must run AFTER ext_flash_init() — this was a pre-existing bug where it
+    * ran earlier and always fell back to factory defaults on cold boot. */
+    if (!shadow_map_load()) {
+        printf("WARN: invalid map, using factory defaults\n");
+        shadow_map_factory_reset();
+    }
+    if (!patch_table_load()) {
+        printf("WARN: invalid patch table, using defaults\n");
+        patch_table_reset();
+    }
 
     usb_service_init();
 
