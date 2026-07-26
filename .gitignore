@@ -1,0 +1,42 @@
+# Build artifacts
+build/
+_firmware/build/
+*.uf2
+*.elf
+*.bin
+*.hex
+*.map
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+dist/
+*.egg-info/
+.pytest_cache/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# KiCad
+*-backups/
+*.kicad_prl
+fp-info-cache
+
+# OS
+.DS_Store
+Thumbs.db
+# Windows: accidental redirect to reserved name "nul" can create a stray file.
+nul
+
+# Local secrets / captures
+*.sal
+*.csv.local
+
+# Local tooling / editor state (not part of the project source)
+.claude/
+.mimocode/

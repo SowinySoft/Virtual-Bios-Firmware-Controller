@@ -1,0 +1,17 @@
+Reference,Qty,Value,Package,Notes
+U1,1,RP2040,QFN-56,Main controller
+U2,1,W25Q128JV,SOP-8,Extension flash 16MB
+U3,1,24C02,SOIC-8,Config EEPROM
+U4,1,74LVC1G125,SC-70-5,MISO tri-state buffer
+U5,1,AMS1117-3.3,SOT-223,Optional LDO if USB powered
+J1,1,Header 2x1,Bypass jumper
+J2,1,USB-C 16P,Receptacle,Programming port
+C1-C4,4,100nF,0402,Decoupling
+C5,1,10uF,0603,Bulk cap
+R1-R2,2,5.1k,0402,USB-C CC pull-down
+R3,1,10k,0402,CS# pull-up
+R4,1,10k,0402,Reset button pull-up
+D1,1,Green LED,0603,Status OK
+D2,1,Red LED,0603,Status fault
+SW1,1,Tactile,6x6mm,Factory reset
+PCB1,1,Interposer,SOIC-8 adapter,1.0mm FR4

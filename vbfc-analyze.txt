@@ -1,0 +1,125 @@
+# VBFC Project Analysis (refreshed)
+
+> Updated after the firmware audit pass (sniffer, patch_table, proto_binary,
+> b64 modules now exist). The earlier version of this file listed them as
+> "missing" and ended with obsolete A–D options; that text is no longer accurate
+> and has been replaced. This is the current, ground-truth view.
+
+---
+
+## Current State
+
+| Layer | Status | Files |
+|-------|--------|-------|
+| Firmware core | Implemented | `main.c`, `spi_arbiter.c`, `shadow_map.c`, `orig_flash.c`, `ext_flash.c`, `config_store.c`, `usb_service.c`, `safety.c` |
+| Shadow map | Working | 4-entry map, CRC32 validation, pass-through/shadow/hotpatch modes, EEPROM (24C02) + ext-flash mirror |
+| SPI arbiter | Implemented (poll) | Decodes RDID/READ/FAST_READ/PAGE_PROG/SECTOR_ER; routes ORIG/EXT by address; 256-byte EXT prefetch cache; MISO mux; patch substitution in read path |
+| Patch table | Implemented | 64-entry table, CRC32, dedup, swap-remove; `patch_table_match` applied in arbiter read path (ORIG hotpatch + EXT entries) |
+| Sniffer | Implemented | 4 KB ring (512 events × 8 B), b64+CRC32 chunked dump, freeze-while-drain |
+| Binary protocol | Implemented | `proto_binary.c` — `ULOAD START/CHUNK/DONE` + `DUMP EXT/ORIG/SNIFF`, base64 framing, running CRC, erase-before-upload guard |
+| Host CLI | Implemented | 397-line `main.py` + 267-line `device.py`; mode/map/patch/flash erase+read+backup+restore/sniff/status/version/reboot/factory-reset; TEXT-vs-b64 transport split |
+| Hardware docs | Reference only | SOIC-8 interposer schematic + BOM; breadboard wiring table; no KiCad/PCB yet |
+| Tests | Placeholder | `tests/spi-capture/` README only — **no actual captures** |
+
+### Genuinely missing (vs. the master plan in `docs/vbfc-controller-plan.md`)
+
+| Planned feature | Status |
+|-----------------|--------|
+| iCE40/ECP5 FPGA tier | Placeholder `firmware/fpga/README.md` only (scope shifted to ECP5/ULX3S/Tang Nano 20K; no Verilog) |
+| 32-region address map (FPGA) | 4 entries on RP2040; struct already supports ext|-redirection but no 32-entry path |
+| USB Mass Storage (drag-drop) | Not implemented (binary ULOAD is the substitute) |
+| KiCad schematic + real PCB | Markdown reference schematic only |
+| Breadboard test-master firmware | Referenced in `hardware/breadboard/README.md` and plan, not in repo |
+| Logic-analyzer SPI captures | None — `tests/spi-capture/` empty |
+| Real-hardware arbiter timing validation | **Highest open risk** — the bit-bang poll arbiter has never run against a real PCH |
+
+---
+
+## Audit pass findings (this session)
+
+A correctness/safety audit of the newer firmware modules produced five findings.
+The three real bugs were fixed and verified with `arm-none-eabi-gcc -fsyntax-only
+-Wall -Wextra` against stubbed SDK headers. Two minor items were deferred.
+
+### Fixed
+
+1. **F1 — `sniffer_dump()` stack overflow (guaranteed crash).**
+   `sniffer.c` declared `uint8_t snap[4096]` + `char b64[1025]` (~5 KB) on the
+   stack inside `sniffer_dump()`. RP2040 default stack is 2 KB (no
+   `PICO_STACK_SIZE` override in `CMakeLists.txt`), so `SNIFF DUMP` would
+   hard-fault the instant it was invoked reachable from `SNIFF DUMP`). Moved both
+   buffers to `static` (BSS); the ring is frozen for the whole drain so reuse
+   between dumps is safe.
+
+2. **F2 — `FLASH BACKUP` read past end of ORIG chip.**
+   `cmd_flash_backup` defaulted `len` to `EXT_FLASH_SIZE` (16 MB) and
+   `binary_dump_orig` had no overflow guard (its comment admitted "caller's
+   responsibility"). On a typical 8 MB SPI BIOS this issued a 16 MB
+   `spi_read_blocking` off the end of the address window. Added the same
+   `EXT_FLASH_SIZE` overflow guard `binary_dump_ext` already had, and changed the
+   `FLASH BACKUP` default to 8 MB (explicit override still honored).
+
+3. **F4 — `shadow_map_lookup` ignored EXT in HOTPATCH mode.**
+   `enter_data_phase` honoured both `SHADOW` and `HOTPATCH`, but `shadow_map_lookup`
+   only returned `VBFC_SOURCE_EXT` when `mode == SHADOW`. So in HOTPATCH the
+   arbiter's EXT read/write branches (`spi_arbiter.c:184-210`, `:218`) were
+   dead code, and EXT regions silently served from ORIG. HOTPATCH now also
+   honours EXT redirection — consistent with the enum's documented intent
+   ("ORIG bytes intercepted + patched in-flight"), i.e. HOTPATCH = shadow map
+   in effect **plus** ORIG-served reads get patched.
+
+4. **(bonus) `proto_binary.c` missing `#include "b64.h"`.**
+   `dump_range` called `b64_encode` without including its prototype — an
+   implicit declaration that is UB under C11 strict and would be a hard error
+   under `-Werror`. On the RP2040 ABI it happened to work (size_t == unsigned
+   int == 32-bit) but the contract was wrong. Added the include.
+
+### Deferred (noted, not fixed)
+
+5. **F3 — `orig_flash` busy-wait uses fixed sleeps.**
+   `orig_flash_page_program` (sleep 3 ms) and `sector_erase` (sleep 100 ms) use
+   fixed delays where `ext_flash` polls RDSR `BUSY`. Back-to-back page programs
+   on the orig bus (e.g. via `handle_write_data_byte`) could drop writes if a
+   chip is slower than the fixed wait. The orig chip is normally driven by the
+   motherboard during boot; the firmware only programs it during RESTORE, which
+   isn't fully wired yet. Lower priority.
+
+6. **F5 — `cmd_patch_add` double-`sscanf`.**
+   Two format-spec parses with inconsistent specifiers; works by luck, cosmetic.
+   Left as-is.
+
+---
+
+## Other drift worth cleaning up later
+
+- **`firmware/rp2040/README.md` is stale.** Its module table omits
+  `patch_table`, `proto_binary`, `sniffer`, `b64`, `vbfc_crc`; its USB protocol
+  example shows an `UPLOAD 0 4096` → binary framing that does **not** match the
+  actual `ULOAD START/CHUNK/DONE` (text+b64) protocol in the code. Refresh
+  before it misleads a future reader.
+- **`README.md` (root) status table** marks P2 firmware as "Skeleton (SPI
+  arbiter timing pending validation)". The firmware is well past skeleton;
+  only the timing *validation* qualifier is still true.
+- **Stray `nul` file** at repo root is a Windows `NUL`-redirect artifact — not
+  committed.
+
+---
+
+## Recommended next steps (replaces the old A–D block)
+
+The single biggest open risk is **unvalidated bit-bang SPI arbiter timing**.
+Nothing here has ever run against a real motherboard. Options, in dependency
+order:
+
+1. **Stand up the breadboard test rig + captures.** Build the
+   `firmware/test_master/` firmware referenced in the plan and a logic-analyzer
+   capture harness — this is the only thing that de-risks the arbiter before any
+   hardware fab. Highest leverage.
+2. **Round-trip the host CLI against a SIM build.** `VBFC_SIM=1` firmware is
+   hardware-free; drive it with the 397-line CLI to shake out the binary
+   protocol end-to-end (ULOAD/DUMP, patch table, sniff dump) without a PCH.
+3. **Wire RESTORE fully.** `FLASH RESTORE` currently only prints a plan; the
+   ULOAD side exists but the orig-bus program path needs F3 (RDSR poll) to be
+   trustworthy.
+4. **Defer the FPGA tier** until the RP2040 MVP is validated on real hardware
+   and the README/module-table drift is cleaned up.

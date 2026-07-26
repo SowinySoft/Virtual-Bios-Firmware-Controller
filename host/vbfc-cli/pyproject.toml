@@ -1,0 +1,21 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "vbfc-cli"
+version = "1.0.0"
+description = "Host CLI for Virtual BIOS Firmware Controller"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "pyserial>=3.5",
+    "click>=8.1",
+]
+
+[project.scripts]
+vbfc-cli = "vbfc_cli.main:cli"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["vbfc_cli*"]
