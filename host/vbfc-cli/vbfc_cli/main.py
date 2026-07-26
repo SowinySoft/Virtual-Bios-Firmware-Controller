@@ -17,6 +17,7 @@ import click
 
 from vbfc_cli.device import open_device
 from vbfc_cli.crypto import generate_keypair, sign_payload, verify_image, DEFAULT_KEY_DIR
+from vbfc_cli.bios_analyzer import analyze_rom
 
 
 def parse_int(value: str) -> int:
@@ -436,6 +437,38 @@ def image_verify(ctx: click.Context, infile: str, key: str | None) -> None:
     if not result.get("valid"):
         click.echo("SIGNATURE INVALID — do not upload this image.")
         raise click.Abort()
+
+
+# --- BIOS analysis ----------------------------------------------------------
+@cli.command()
+@click.argument("romfile", type=click.Path(exists=True))
+@click.pass_context
+def analyze(ctx: click.Context, romfile: str) -> None:
+    """Analyze a ROM dump for hidden/locked BIOS features and emit patch suggestions."""
+    rom = Path(romfile).read_bytes()
+    click.echo(f"Analyzing {romfile} ({len(rom)} bytes)...")
+    analysis = analyze_rom(rom)
+    click.echo(f"\nFirmware type: {analysis['fw_type']}")
+    click.echo(f"SHA-256: {analysis['sha256']}")
+    click.echo("\nDetected structures:")
+    for s in analysis["detected_structures"]:
+        click.echo(f"  [{s['type']}] at 0x{s['offset']:X}: {s['note']}")
+    click.echo(f"\nFlagged variables ({len(analysis['flagged_variables'])}):")
+    for fv in analysis["flagged_variables"]:
+        click.echo(f"  · {fv['name']} (0x{fv['offset']:X}, attrs=0x{fv['attr']:02X}) — {', '.join(fv.get('hints', []))}")
+    click.echo(f"\nPatch suggestions ({len(analysis['patch_suggestions'])}):")
+    for ps in analysis["patch_suggestions"]:
+        click.echo(f"  # {ps['description']}")
+        click.echo(f"  {ps['suggested_command']}")
+        if ps.get('hints'):
+            click.echo(f"  #    hint: {'; '.join(ps['hints'])}")
+    click.echo(f"\nDisabled PCI devices detected ({len(analysis['disabled_pci_devices'])}):")
+    for pci in analysis["disabled_pci_devices"]:
+        click.echo(f"  · {pci['note']}")
+    click.echo(f"\nChipset port/register findings ({len(analysis['chipset_ports'])}):")
+    for port in analysis["chipset_ports"]:
+        click.echo(f"  · {port['note']}")
+    click.echo(f"\nTo apply: send PATCH ADD commands to the VBFC device via serial.")
 
 
 # --- factory reset ----------------------------------------------------------
