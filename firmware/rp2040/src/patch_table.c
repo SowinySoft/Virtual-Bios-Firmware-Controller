@@ -1,6 +1,6 @@
 #include <string.h>
 
-#include "pico/crc.h"
+#include "vbfc_crc.h"
 
 #include "patch_table.h"
 #include "ext_flash.h"
@@ -9,8 +9,8 @@ static vbfc_patch_table_t g_table;
 
 static uint32_t pt_compute_crc(const vbfc_patch_table_t *t) {
     /* CRC over the entries array only; count defines how many are live. */
-    return crc32((const uint8_t *)t->entries,
-                 (size_t)t->count * sizeof(vbfc_patch_entry_t));
+    return crc32_full((const uint8_t *)t->entries,
+                      (size_t)t->count * sizeof(vbfc_patch_entry_t));
 }
 
 static void pt_set_defaults(vbfc_patch_table_t *t) {

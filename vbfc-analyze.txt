@@ -88,20 +88,48 @@ The three real bugs were fixed and verified with `arm-none-eabi-gcc -fsyntax-onl
    Two format-spec parses with inconsistent specifiers; works by luck, cosmetic.
    Left as-is.
 
+### Fixed by the first ever real-SDK build (F6, F7)
+
+The firmware had **never been cross-compiled against the actual Pico SDK** — it
+was written partly against APIs that don't exist there. Installing pico-sdk 2.3
+on the dev machine (the first real build environment) surfaced two more bugs
+that no amount of `-fsyntax-only` against stubs could have (the stubs merely
+mirrored the firmware's fiction). Both fixed:
+
+7. **F6 — nonexistent `pico/crc.h`.**
+   `shadow_map.c` and `patch_table.c` `#include "pico/crc.h"` and called
+   `crc32()` — but no such header or function exists in the Pico SDK (only
+   vendor `crc.h` files buried in btstack ports). Replaced with the project's
+   own `vbfc_crc.h` → `crc32_full()`, identical whole-buffer signature. This
+   also means the project's two CRC helpers had been silently divergent: the
+   map/patch paths used a "0xFFFFFFFF init" zlib-style CRC while proto/sniffer
+   paths used the project's `vbfc_crc` (reflected, init 0). They're now unified
+   on `vbfc_crc`, so map CRC == `crc32_full` == `zlib.crc32`, and host-side
+   verification with `zlib.crc32` is correct for *all* CRC-covered structures.
+
+8. **F7 — wrong `watchdog_reboot` arity.**
+   `usb_service.c` `cmd_reboot` called `watchdog_reboot(0, 0)` — 2 args — but the
+   real SDK signature is `watchdog_reboot(uint32_t pc, uint32_t sp, uint32_t
+   delay_ms)`. Fixed to `watchdog_reboot(0, 0, 0)` (reset to bootrom,
+   immediate). Same fictional-API root cause as F6.
+
+After F6/F7 the firmware **compiles and links** for the first time:
+`text=105532, data=0, bss=20748` (≈105 KB flash + ≈20 KB SRAM of the RP2040's
+264 KB / 2 MB). Link-time `nm` confirms the F1 stack-buffer fix: `g_snap`,
+`g_ring` are `0x1000` (4096 B) in **BSS** (`b`), not on the 2 KB stack — the
+SNIFF DUMP crash is gone at the level that matters.
+
 ---
 
 ## Other drift worth cleaning up later
 
-- **`firmware/rp2040/README.md` is stale.** Its module table omits
-  `patch_table`, `proto_binary`, `sniffer`, `b64`, `vbfc_crc`; its USB protocol
-  example shows an `UPLOAD 0 4096` → binary framing that does **not** match the
-  actual `ULOAD START/CHUNK/DONE` (text+b64) protocol in the code. Refresh
-  before it misleads a future reader.
 - **`README.md` (root) status table** marks P2 firmware as "Skeleton (SPI
   arbiter timing pending validation)". The firmware is well past skeleton;
   only the timing *validation* qualifier is still true.
-- **Stray `nul` file** at repo root is a Windows `NUL`-redirect artifact — not
-  committed.
+- **Stray `nul` file** at repo root was a Windows `NUL`-redirect artifact —
+  gitignored so it stays out of the repo.
+- *(Resolved this session: `firmware/rp2040/README.md` module table + USB
+  protocol example were stale and have now been refreshed to match the code.)*
 
 ---
 
@@ -123,3 +151,122 @@ order:
    trustworthy.
 4. **Defer the FPGA tier** until the RP2040 MVP is validated on real hardware
    and the README/module-table drift is cleaned up.
+
+---
+
+## Enhancement roadmap — requested features, feasibility & priority
+
+Seven enhancements were requested for the vbfc module. Each is evaluated
+honestly against the one architectural fact that decides everything: **the
+VBFC is a SPI bus interposer.** It sits electrically between the PCH and the
+flash chip, presenting bytes on reads. It can shadow regions, patch bytes in
+flight, sniff the bus, and back up/restore the whole chip — but it **cannot
+create silicon, change CPU microcode, alter runtime OS state, or own a
+network connection.** That is the deciding line for each feature below.
+
+Verdicts: ✅ buildable now · ⚠️ partial/host-side · ❌ not via SPI (defer).
+
+### 1. Detect defective BIOS blocks that need upgrade — ✅ buildable now
+**Mechanism:** Read the original chip (`DUMP ORIG`), split it into fixed
+blocks (4 KB to 64 KB), CRC32 each, compare against a known-good table.
+Flag any block whose CRC mismatches a known-good image of the same board/BIOS.
+**Where:** Host-side analysis over existing dump primitives — **no firmware
+change needed.** The project's `crc32_full` already matches `zlib.crc32`, so a
+host `zlib.crc32` over `DUMP ORIG` chunks is exact.
+**Effort:** small. Needs a known-good image registry keyed on JEDEC ID +
+board model + BIOS version. Start with a single-board known-good image and a
+Python `bench.ps1`-style block-diff report.
+
+### 2. Dual-BIOS mode + charge backup chip with new features — ⚠️ virtual only
+**Honest constraint:** A SPI interposer cannot add a *second physical chip.*
+What it **can** do is emulate one: hold two full BIOS images in the W25Q128
+ext store (bank A / bank B), and switch which bank the shadow map serves via a
+new `MAP BANK` command. "Charging the backup chip with new features" then
+becomes `ULOAD` a second image into ext-flash bank B and pointing the map at it
+— a *virtual* dual-BIOS, switchable at runtime without a reboot to recovery.
+**Where:** firmware (a bank field on `vbfc_map_entry_t` + a SET BANK command)
+and host CLI (bank upload/select).
+**Effort:** medium. Pair with feature #4 (sign each bank) so you can't boot a
+tampered bank.
+
+### 3. Increase bus transfer speed to the MB's max — ❌ mostly defer to FPGA tier
+**Honest constraint:** The motherboard *drives SCK on reads*; the interposer
+serves bytes, it does not set the clock. The bit-bang poll arbiter is already
+the bottleneck and is far below native SPI clock — pushing SCK higher risks
+sampling errors on the bit-bang path. Real throughput gains need **hardware**
+(full-duplex PIO/FPGA), not a faster poll loop. *Small* gains are possible
+now: collapse the prefetch reload window, drop the per-byte patch-table
+linear scan for a small hash index, and gate RDID decode once-on-CS rather than
+each byte. But the headline "max MB speed" is an FPGA-tier outcome.
+**Effort:** now = small tune-ups; the real win = large (FPGA tier).
+
+### 4. Security layer against BIOS-injection attackers — ✅ buildable, high value
+**This is the single most valuable ask.** An interposer that silently serves
+replacement firmware is itself an injection vector if anyone can ULOAD a
+tampered image. Defense:
+- **Image authentication:** sign each ext-flash image bank (Ed25519 over a
+  header + payload hash). On entering SHADOW/HOTPATCH for a signed bank, the
+  firmware verifies the signature before serving; on failure it falls back to
+  pass-through (safe), not to serving the tampered image.
+- **Anti-rollback:** store a monotonic minimum-version in the signed header
+  and refuse to serve older images.
+- **Key provisioning:** embed the public key in a read-locked ext-flash sector;
+  never accept the private key on the device.
+**Where:** firmware crypto (RP2040 has cycles for Ed25519/SHA-256;
+`hardware/sha256` exists, Ed25519 ~50 KB code) + host signing tooling.
+**Effort:** large but highest leverage — it converts the interposer from a
+liability into a trust root.
+
+### 5. Download latest BIOS from web, install after compatibility check — ⚠️ host-side
+**Honest constraint:** the interposer has no network. The **host CLI** does the
+fetch+verify+install; firmware just receives a verified ULOAD.
+**Mechanism:** host fetches candidate BIOS → checks JEDEC ID, chip size, and
+optionally a vendor signature region match → ULOADs to a signed bank → sets the
+map. The "compatibility check" is host logic against a chipset/BIOS compatibility
+table.
+**Effort:** medium, host-side. Needs a curated compatibility matrix and a
+trustworthy source (OEM site, OSS BIOS repo). Pair with #4 so a downloaded
+image is signed before it can be served.
+
+### 6. Install compatible OEM BIOS after check — ✅ buildable (same path as #5)
+**Mechanism:** identical to #5 but source is an OEM image the user supplies
+instead of an auto-fetched one. Same JEDEC/size/region checks, same signed-bank
+install path.
+**Effort:** small, once #5's install+verify pipeline exists — #6 is a driver
+of that pipeline, not a separate one. Fold into #5.
+
+### 7. Detect/open hidden ports + expose hidden BIOS features — ✅ the core use case
+**Honest mechanism:** This is the headline capability *already designed in*
+(shadow an NVRAM/setup region with modified defaults to unlock hidden menus,
+force-on fTPM/virt, expose hidden options). The new ask — **detection** —
+means: parse the BIOS structure to *find* the hidden menu/setup bytes rather
+than relying on hand-curated offsets per board.
+**Where:** a BIOS-structure parser in the host tool: detect UEFI vs Legacy
+(`EFI` signature at known offsets), locate the Setup/NVRAM variable store,
+flag setup-option bytes whose values differ from defaults. Then emit patch
+table entries (`PATCH ADD …`) or a shadow entry targeting that region.
+**Effort:** medium-large, host-side, board-specific knowledge required — but
+it converts VBFC from a manual-offset tool into a guided unlocker.
+
+### Priority recommendation
+
+Build in this order — each unlocks the next, and #4 makes everything else safe:
+
+1. **#4 Security/signing first.** Without it, every later feature that installs
+   an image (#2, #5, #6) is an injection risk. This is the gate.
+2. **#1 Defective-block detection.** Pure host-side, no firmware, immediate
+   value as a board-health tool. Validated by the existing build.
+3. **#7 Hidden-feature detection.** Host-side parser + patch table; this is the
+   feature that makes VBFC genuinely useful to end users.
+4. **#2 Virtual dual-BIOS.** Now that banks are signed (#4), add bank select
+   + a `MAP BANK` command.
+5. **#5/#6 OEM/web install.** Reuses the signed-bank install path from #2/#4.
+6. **#3 Bus speed.** Take the small poll-loop wins now; defer the real win to
+   the FPGA tier. Do not block MVP on this.
+
+**What VBFC cannot ever do via SPI** (so these stay off the roadmap): add a
+physical TPM/second silicon chip, change CPU microcode, alter runtime OS
+behavior, or grant hardware virtualization a CPU lacks. Features #2/#3 are
+sometimes imagined to reach into these — they don't; only the *BIOS image*
+can be shaped, and only if the platform already has the hardware capability
+that the OEM hid or disabled.

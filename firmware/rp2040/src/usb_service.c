@@ -252,7 +252,7 @@ static void cmd_version(void) {
 static void cmd_reboot(void) {
     printf("OK rebooting\r\n");
     sleep_ms(20);
-    watchdog_reboot(0, 0);
+    watchdog_reboot(0, 0, 0);   /* pc=0 -> bootrom, sp=0, delay 0 = immediate */
 }
 
 static void cmd_factory_reset(void) {

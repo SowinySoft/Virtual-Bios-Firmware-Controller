@@ -1,6 +1,6 @@
 #include <string.h>
 
-#include "pico/crc.h"
+#include "vbfc_crc.h"
 
 #include "shadow_map.h"
 #include "config_store.h"
@@ -9,8 +9,8 @@
 static vbfc_shadow_map_t g_map;
 
 static uint32_t map_compute_crc(const vbfc_shadow_map_t *map) {
-    return crc32((const uint8_t *)map->entries,
-                 (size_t)map->entry_count * sizeof(vbfc_map_entry_t));
+    return crc32_full((const uint8_t *)map->entries,
+                      (size_t)map->entry_count * sizeof(vbfc_map_entry_t));
 }
 
 static void map_set_defaults(vbfc_shadow_map_t *map) {
