@@ -14,11 +14,20 @@ Programmable SPI interposer firmware for the Virtual BIOS Firmware Controller.
 export PICO_SDK_PATH=/path/to/pico-sdk
 cd firmware/rp2040
 mkdir build && cd build
-cmake ..
-make -j4
+cmake -G Ninja ..
+ninja
 ```
 
-Output: `vbfc_controller.uf2` — flash via BOOTSEL USB.
+If picotool is available (host compiler present), the build produces:
+`vbfc_controller.uf2` — flash via BOOTSEL USB.
+
+If picotool is absent (e.g. no host C/C++ compiler), pass `-DPICO_NO_PICOTOOL=1`
+to CMake — the firmware `.elf` and `.bin` will still link, and the `.uf2` can
+be generated separately from the `.bin` with the included Python converter:
+
+```bash
+python host/vbfc-cli/vbfc_cli/vbfc_uf2.py firmware/rp2040/build/vbfc_controller.bin firmware/rp2040/build/vbfc_controller.uf2
+```
 
 ## Module Overview
 
