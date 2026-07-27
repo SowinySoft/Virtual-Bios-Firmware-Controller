@@ -2,7 +2,7 @@
 
 ## Abstract
 
-Modern x86 platforms store boot firmware in SPI flash memory and expose it through a simple but privileged bus between the Platform Controller Hub (PCH) and the BIOS chip. The Virtual BIOS Firmware Controller (VBFC) is an open-source, low-cost SPI interposer designed to sit transparently on that bus and selectively substitute flash contents in real time without modifying the original device. Built around the Raspberry Pi RP2040 and a 16 MB extension flash store, VBFC combines address remapping, in-flight patching, transaction sniffing, and image authentication to support BIOS analysis, feature unlocking, and firmware hardening. This paper presents the architecture, implementation, security model, and evaluation of the current prototype, together with the most important remaining validation steps required before broader publication or hardware deployment.
+Modern x86 platforms store boot firmware in SPI flash memory and expose it through a simple but privileged bus between the Platform Controller Hub (PCH) and the BIOS chip. The Virtual BIOS Firmware Controller (VBFC) is an open-source, low-cost SPI interposer designed to sit transparently on that bus and selectively substitute flash contents in real time without modifying the original device. Built around the Raspberry Pi RP2040 and a 16 MB extension flash store, VBFC combines address remapping, in-flight patching, transaction sniffing, and image authentication to support BIOS analysis, feature unlocking, and firmware hardening. The current repository revision also adds a breadboard validation rig, a Pico-based test master, a host-side regression suite, and a logging-driven validation workflow that make the bring-up process more reproducible and better suited for experimental publication. This paper presents the architecture, implementation, security model, and evaluation of the current prototype together with the most important remaining hardware-validation steps required before broader deployment.
 
 ## Keywords
 
@@ -53,6 +53,10 @@ The firmware is organized around three main tasks:
 
 The architecture intentionally favors deterministic behavior. On power-up, the controller defaults to pass-through mode until a shadow map is loaded and validated. This conservative design preserves normal operation and minimizes the chance of irrecoverable boot failure.
 
+### 2.4 Validation and Bring-Up Framework
+
+A notable addition in the current repository revision is a reproducible validation framework for hardware bring-up. The project now includes a breadboard-oriented test rig, a small Pico-based test master that can interrogate the shared SPI bus, and a host-side workflow that automates validation scripts, captures log output, and records the results for later analysis. These additions are not a replacement for full platform validation, but they substantially reduce the effort required to debug timing, pass-through behavior, and shadow-map round-trip operations on real hardware.
+
 ## 3. Security Architecture
 
 ### 3.1 Threat Model
@@ -93,6 +97,10 @@ The firmware supports a shadow map that describes which address ranges should be
 
 The prototype also contains a bus sniffer that captures a bounded transaction history and exposes it through a host-side binary protocol. This is useful both for debugging and for understanding how the target platform accesses the SPI flash. The host CLI can upload images, dump regions, manage shadow maps, and inspect the sniffer state.
 
+### 4.4 Breadboard Validation Harness
+
+The most recent implementation work extends the project beyond firmware-only operation by introducing a breadboard validation harness. A dedicated test-master firmware targets a secondary Pico board and can read the JEDEC identifier from the shared SPI bus, while a Python validation runner executes a defined sequence of pass-through, shadow-map, and recovery checks. The workflow is complemented by regression tests in the host package and by a logger that writes each run to a timestamped file, making the validation steps reproducible for future experiments and publications.
+
 ![Timing and layout analysis for the VBFC prototype](paper_assets/fig4_timing_analysis.png)
 
 Figure 4. The current implementation emphasizes a conservative, recoverable design: shadowed reads are verified before use, and the original chip remains the fallback path.
@@ -105,9 +113,10 @@ The host-side toolchain is intentionally lightweight. It enables:
 - shadow-map configuration;
 - flash backup and restore operations;
 - bus sniffing and dump collection;
-- basic BIOS analysis workflows.
+- basic BIOS analysis workflows;
+- reproducible breadboard validation and logging.
 
-The CLI is an important part of the project because it lowers the barrier for end users who may otherwise be forced to work with low-level SPI tools or custom hardware programmers. The current implementation already demonstrates the viability of a practical workflow around the interposer.
+The CLI is an important part of the project because it lowers the barrier for end users who may otherwise be forced to work with low-level SPI tools or custom hardware programmers. The current implementation demonstrates not only the viability of a practical workflow around the interposer, but also an increasingly mature validation pipeline suitable for academic replication and technical evaluation.
 
 ## 6. Evaluation and Results
 
@@ -121,7 +130,7 @@ The prototype is functional, but the bit-banged SPI path remains the main perfor
 
 ### 6.3 Validation Status
 
-The most important remaining validation task is real-hardware testing against an actual motherboard or BIOS flash target. The repository analysis notes identify this as the highest-value next step because the current implementation has not yet been validated end-to-end on a real platform. Until that validation is complete, the paper should present the project as a strong prototype rather than a fully field-validated product.
+The most important remaining validation task is real-hardware testing against an actual motherboard or BIOS flash target. The repository analysis notes identify this as the highest-value next step because the current implementation has not yet been validated end-to-end on a real platform. Recent additions improve this situation substantially: the project now ships with a breadboard validation rig, a Pico test master, a host-side validation runner, and a regression suite that covers protocol framing, CRC behavior, event decoding, and CLI behavior. These features do not replace physical validation, but they make the remaining bring-up work more systematic and better documented for future experiments.
 
 ## 7. Use Cases
 
