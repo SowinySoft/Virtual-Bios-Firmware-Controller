@@ -87,6 +87,9 @@ class VbfcDevice:
     def set_mode(self, mode: str) -> bool:
         return self._ok(self.command(f"SET MODE {mode}"))
 
+    def set_bank(self, bank: int) -> bool:
+        return self._ok(self.command(f"SET BANK {bank}"))
+
     # --- map -----------------------------------------------------------------
     def get_map(self) -> list[dict]:
         entries = []

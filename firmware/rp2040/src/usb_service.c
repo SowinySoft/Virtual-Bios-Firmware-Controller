@@ -112,6 +112,41 @@ static void cmd_set_mode(const char *args) {
     shadow_map_set_mode(m) ? ok() : err("save");
 }
 
+/* ---- bank (dual-BIOS) --------------------------------------------------- */
+static void cmd_get_bank(void) {
+    const vbfc_shadow_map_t *map = shadow_map_get();
+    /* Bank is deduced from the first EXT entry's ext_offset: 0x2000 = bank 0,
+     * 0x802000 = bank 1. Default: bank 0. */
+    uint8_t bank = 0;
+    for (uint8_t i = 0; i < map->entry_count; i++) {
+        if (map->entries[i].source == VBFC_SOURCE_EXT && map->entries[i].ext_offset >= 0x800000) {
+            bank = 1;
+            break;
+        }
+    }
+    printf("BANK %u\r\n", bank);
+}
+static void cmd_set_bank(const char *args) {
+    uint32_t b;
+    if (!parse_num(args, &b) || b > 1) { err("bank"); return; }
+    /* Shift all EXT entries' ext_offset between bank 0 (0x2000) and bank 1
+     * (0x802000). This is a direct-switch: we map the entries' ext_offset
+     * by XORing the bank's bit. */
+    const vbfc_shadow_map_t *map = shadow_map_get();
+    vbfc_shadow_map_t tmp = *map;
+    for (uint8_t i = 0; i < tmp.entry_count; i++) {
+        if (tmp.entries[i].source == VBFC_SOURCE_EXT) {
+            if (b == 0) {
+                tmp.entries[i].ext_offset &= ~0x800000;  /* bank 0: offset in lower half */
+            } else {
+                tmp.entries[i].ext_offset |= 0x800000;   /* bank 1: offset in upper half */
+            }
+        }
+    }
+    tmp.crc32 = 0; /* force the save to recompute */
+    if (shadow_map_save()) ok(); else err("save");
+}
+
 /* ---- patch --------------------------------------------------------------- */
 static void cmd_patch_add(const char *args) {
     /* PATCH ADD <addr> <orig> <new>  (orig = 0xFF means wildcard) */
@@ -279,6 +314,9 @@ static void handle_line(char *line) {
 
     if (strcmp(line, "GET MODE") == 0)       { cmd_get_mode(); return; }
     if (strncmp(line, "SET MODE ", 9) == 0)  { cmd_set_mode(line + 9); return; }
+
+    if (strcmp(line, "GET BANK") == 0)       { cmd_get_bank(); return; }
+    if (strncmp(line, "SET BANK ", 9) == 0)  { cmd_set_bank(line + 9); return; }
 
     if (strcmp(line, "GET MAP") == 0)        { cmd_get_map(); return; }
     if (strncmp(line, "MAP ADD ", 8) == 0)   { cmd_map_add(line + 8); return; }

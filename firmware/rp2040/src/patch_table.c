@@ -52,6 +52,7 @@ bool patch_table_save(void) {
 
 void patch_table_reset(void) {
     pt_set_defaults(&g_table);
+    patch_table_cache_invalidate();
     patch_table_save();
 }
 
@@ -61,12 +62,14 @@ bool patch_table_add(const vbfc_patch_entry_t *e) {
     for (uint8_t i = 0; i < g_table.count; i++) {
         if (g_table.entries[i].addr == e->addr) {
             g_table.entries[i] = *e;
+            patch_table_cache_invalidate();
             return patch_table_save();
         }
     }
     g_table.entries[g_table.count] = *e;
     g_table.entries[g_table.count].enabled = e->enabled ? 1 : 0;
     g_table.count++;
+    patch_table_cache_invalidate();
     return patch_table_save();
 }
 
@@ -76,12 +79,14 @@ bool patch_table_remove(uint8_t index) {
     g_table.entries[index] = g_table.entries[g_table.count - 1];
     memset(&g_table.entries[g_table.count - 1], 0, sizeof(vbfc_patch_entry_t));
     g_table.count--;
+    patch_table_cache_invalidate();
     return patch_table_save();
 }
 
 void patch_table_clear(void) {
     g_table.count = 0;
     memset(g_table.entries, 0, sizeof(g_table.entries));
+    patch_table_cache_invalidate();
     patch_table_save();
 }
 
@@ -89,16 +94,35 @@ const vbfc_patch_table_t *patch_table_get(void) {
     return &g_table;
 }
 
+/* Tiny direct-mapped address cache — the most-frequently matched address
+ * hits in O(1) instead of scanning up to 64 entries per byte. Resets on
+ * table modifications. */
+static struct {
+    uint32_t addr;
+    uint8_t  new_byte;
+    bool     valid;
+} g_match_cache;
+
 bool patch_table_match(uint32_t addr, uint8_t orig_byte, uint8_t *out) {
-    /* Linear scan — small table, hot in tight read loops, but reads from ORIG
-     * are the only path that pays this cost. EXT-served bytes are already the
-     * desired values and skip patching. */
+    /* Check cache first */
+    if (g_match_cache.valid && g_match_cache.addr == addr) {
+        if (out) *out = g_match_cache.new_byte;
+        return true;
+    }
     for (uint8_t i = 0; i < g_table.count; i++) {
         const vbfc_patch_entry_t *e = &g_table.entries[i];
         if (!e->enabled || e->addr != addr) continue;
         if (e->orig_byte != 0xFF && e->orig_byte != orig_byte) continue;
         if (out) *out = e->new_byte;
+        /* Cache this hit */
+        g_match_cache.addr = addr;
+        g_match_cache.new_byte = e->new_byte;
+        g_match_cache.valid = true;
         return true;
     }
     return false;
+}
+
+void patch_table_cache_invalidate(void) {
+    g_match_cache.valid = false;
 }

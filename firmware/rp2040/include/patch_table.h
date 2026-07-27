@@ -40,6 +40,9 @@ const vbfc_patch_table_t *patch_table_get(void);
  * arbiter's read path before the byte reaches the motherboard. */
 bool patch_table_match(uint32_t addr, uint8_t orig_byte, uint8_t *out);
 
+/* Invalidate the hot-match address cache. Called on table mutation. */
+void patch_table_cache_invalidate(void);
+
 bool patch_table_validate(const vbfc_patch_table_t *t);
 
 #endif /* VBFC_PATCH_TABLE_H */

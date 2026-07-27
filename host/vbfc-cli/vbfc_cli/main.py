@@ -18,6 +18,7 @@ import click
 from vbfc_cli.device import open_device
 from vbfc_cli.crypto import generate_keypair, sign_payload, verify_image, DEFAULT_KEY_DIR
 from vbfc_cli.bios_analyzer import analyze_rom
+from vbfc_cli.block_check import check_rom
 
 
 def parse_int(value: str) -> int:
@@ -99,6 +100,17 @@ def mode_set(ctx: click.Context, value: str) -> None:
     with open_device(ctx.obj["port"]) as dev:
         ok = dev.set_mode(value)
         click.echo(f"Mode set to {value}." if ok else "Failed to set mode.")
+
+
+# --- bank (dual-BIOS) ----------------------------------------------------------
+@cli.command("bank")
+@click.argument("bank", type=click.Choice(["0", "1"]))
+@click.pass_context
+def bank_cmd(ctx: click.Context, bank: str) -> None:
+    """Switch between virtual BIOS banks (0=image slot A, 1=image slot B)."""
+    with open_device(ctx.obj["port"]) as dev:
+        ok = dev.set_bank(int(bank))
+        click.echo(f"Bank set to {bank}." if ok else "Failed to set bank.")
 
 
 # --- map --------------------------------------------------------------------
@@ -469,6 +481,31 @@ def analyze(ctx: click.Context, romfile: str) -> None:
     for port in analysis["chipset_ports"]:
         click.echo(f"  · {port['note']}")
     click.echo(f"\nTo apply: send PATCH ADD commands to the VBFC device via serial.")
+
+
+# --- block check (#1) ----------------------------------------------------------
+@cli.command("check")
+@click.argument("romfile", type=click.Path(exists=True))
+@click.option("--good", default=None, help="Known-good ROM for comparison")
+@click.option("--block-size", default="4k", help="Block size: 4k, 64k, 256k, 1m")
+@click.pass_context
+def block_check(ctx: click.Context, romfile: str, good: str | None, block_size: str) -> None:
+    """Check ROM for defective blocks (CRC32 per block, diff against known-good)."""
+    rom = Path(romfile).read_bytes()
+    good_rom = Path(good).read_bytes() if good else None
+    bs = {"4k": 4096, "64k": 65536, "256k": 262144, "1m": 1048576}.get(block_size, 4096)
+    expected = len(good_rom) if good_rom else None
+    result = check_rom(rom, good_rom, bs, expected)
+    click.echo(f"  size: {result['size']} bytes, size OK: {result['size_ok']}")
+    click.echo(f"  SHA-256: {result['sha256']}")
+    click.echo(f"  blocks: {result['total_blocks']}, good: {result['good_blocks']}, bad: {len(result['bad_blocks'])}")
+    click.echo(f"  COMPLIANCE: {'PASS' if result['compliance'] else 'FAIL'}")
+    for b in result["bad_blocks"][:20]:
+        click.echo(f"  [x] block {b['index']} at 0x{b['offset']:X} CRC={b['rom_crc32']} good CRC={b['good_crc32']} ({b['severity']})")
+    if len(result["bad_blocks"]) > 20:
+        click.echo(f"  ... and {len(result['bad_blocks'])-20} more bad blocks")
+    if good:
+        click.echo(f"\n  total CRC (ROM): 0x{result['total_crc']:08X}")
 
 
 # --- factory reset ----------------------------------------------------------
