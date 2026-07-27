@@ -115,6 +115,41 @@ When GP6 high, original chip is deselected/sleeping even if bus CS active.
 3. **T03 Shadow** — Write pattern `0xAA` to ext flash offset 0, enable shadow mode via `vbfc-cli`, read `0xFF0000`.
 4. **T04 Bypass** — Close bypass jumper (GP18→GND), verify reads still work (orig only).
 
+## Validation Checklist
+
+The following checklist is the intended end-to-end flow for the breadboard rig:
+
+1. **Pre-flight**
+   - Build and flash the test master to Pico A and the VBFC firmware to Pico B.
+   - Confirm both devices enumerate over USB and that the test master prints a JEDEC ID.
+   - Connect the shared SPI bus and the MISO mux as documented above.
+
+2. **T01 pass-through**
+   - Start with VBFC in pass-through mode.
+   - Read a known address from the original flash using Pico A.
+   - Compare the byte with the direct flash read from the same address.
+   - Expected result: the bytes match exactly.
+
+3. **T02 RDID**
+   - Issue the `0x9F` RDID command from the test master.
+   - Confirm the returned three-byte JEDEC ID matches the attached flash part.
+   - Expected result: `EF 40 18` for a W25Q128-class part.
+
+4. **T03 shadow-map round-trip**
+   - Upload a small image to the VBFC extension flash store.
+   - Add a shadow-map entry that redirects the target BIOS address range to the extension image.
+   - Switch VBFC to shadow mode and read the redirected range.
+   - Expected result: the host sees the uploaded image bytes rather than the original flash bytes.
+
+5. **T04 bypass recovery**
+   - Close the bypass jumper so the controller is forced into pass-through.
+   - Re-run the read test from Pico A.
+   - Expected result: reads return to the original flash path.
+
+6. **Record evidence**
+   - Save the JEDEC output, the pass-through comparison, and the shadow-map readback for each run.
+   - This evidence is the minimum bar before moving to the SOIC-8 interposer PCB.
+
 ## SPI Speed
 
 Start at **1 MHz** (test master default). Increase to 10 MHz after T01–T03 pass.

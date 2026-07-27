@@ -25,7 +25,7 @@ import io
 from cryptography.hazmat.primitives import hashes
 
 # Reuse crypto primitives from the existing module
-from vbpfc_cli.crypto import (VBFC_IMAGE_HDR_SIZE, VBFC_SHA256_BYTES,
+from vbfc_cli.crypto import (VBFC_IMAGE_HDR_SIZE, VBFC_SHA256_BYTES,
                               sign_payload, verify_image, DEFAULT_KEY_DIR)
 
 # Known flash sizes for compatibility check (in bytes)

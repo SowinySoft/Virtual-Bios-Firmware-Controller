@@ -16,6 +16,9 @@ dependencies = [
 
 [project.scripts]
 vbfc-cli = "vbfc_cli.main:cli"
+vbfc-breadboard = "vbfc_cli.breadboard:main"
+vbfc-breadboard-run = "vbfc_cli.breadboard_runner:main"
+vbfc-breadboard-log = "vbfc_cli.breadboard_logger:main"
 
 [tool.setuptools.packages.find]
 where = ["."]

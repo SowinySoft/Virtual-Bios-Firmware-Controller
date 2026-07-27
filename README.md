@@ -9,9 +9,11 @@ with a 64 KB shadow region, while appearing as the original flash device.
 vbfc-controller/
 ├── docs/                  Architecture, shadow map spec, install guide
 ├── hardware/
+│   ├── breadboard/        Breadboard validation rig notes
 │   └── interposer-soic8/  SOIC-8 interposer PCB design + BOM
 ├── firmware/
-│   └── rp2040/            RP2040 MVP firmware (Pico SDK)
+│   ├── rp2040/            RP2040 MVP firmware (Pico SDK)
+│   └── test_master/       Pico-based breadboard test master
 ├── host/
 │   └── vbfc-cli/          Python host CLI (USB CDC)
 └── tests/
@@ -31,7 +33,17 @@ make -j4
 # Flash vbfc_controller.uf2 via BOOTSEL
 ```
 
-### 2. Install host CLI
+### 2. Build the breadboard test master (optional)
+
+```bash
+export PICO_SDK_PATH=/path/to/pico-sdk
+cd firmware/test_master
+mkdir build && cd build
+cmake -G Ninja ..
+ninja
+```
+
+### 3. Install host CLI
 
 ```bash
 cd host/vbfc-cli
@@ -39,7 +51,7 @@ pip install -e .
 vbfc-cli scan
 ```
 
-### 3. Install hardware
+### 4. Install hardware
 
 See [docs/install-guide.md](docs/install-guide.md).
 
@@ -59,9 +71,9 @@ See [docs/install-guide.md](docs/install-guide.md).
 |-------|--------|
 | P0 Spec | Done |
 | P1 Hardware design | Done (schematic reference + BOM) |
-| P2 MVP firmware | Skeleton (SPI arbiter timing pending validation) |
-| P3 Host tools | Done (upload stub for P2) |
-| P4 Validation | Pending hardware prototype |
+| P2 MVP firmware | Implemented, with hardware timing validation still pending |
+| P3 Host tools | Done (upload / dump / patch / sniff workflow) |
+| P4 Validation | Breadboard scaffold added; real hardware validation pending |
 | P5 FPGA tier | Planned |
 
 ## Documentation

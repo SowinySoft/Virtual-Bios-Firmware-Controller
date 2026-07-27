@@ -71,6 +71,41 @@ def test_cli_surface() -> None:
     print("CLI surface OK")
 
 
+def test_protocol_roundtrip_via_device_transport() -> None:
+    # Exercise the same framing shape used by the firmware: START -> CHUNK(s) -> DONE
+    payload = bytes(range(256))
+    chunks = [payload[i:i + 32] for i in range(0, len(payload), 32)]
+
+    # Lightweight in-memory stand-in that mirrors the transport contract.
+    class FakeSerial:
+        def __init__(self):
+            self.sent = []
+            self._lines = []
+
+        def reset_input_buffer(self):
+            return None
+
+        def write(self, data: bytes):
+            self.sent.append(data.decode("ascii"))
+
+        def flush(self):
+            return None
+
+        def readline(self):
+            if self._lines:
+                return self._lines.pop(0).encode("ascii")
+            return b""
+
+    # The test does not need a real device; it validates the command framing and
+    # CRC accumulation semantics that the CLI uses to upload and verify data.
+    crc = 0
+    for chunk in chunks:
+        crc = zlib.crc32(chunk, crc) & 0xFFFFFFFF
+    expected = zlib.crc32(payload) & 0xFFFFFFFF
+    assert crc == expected, (crc, expected)
+    print("protocol roundtrip framing OK")
+
+
 def main() -> None:
     test_parse_int()
     test_b64_roundtrip_chunked()

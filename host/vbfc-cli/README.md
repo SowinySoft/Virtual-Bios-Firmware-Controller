@@ -31,6 +31,28 @@ vbfc-cli mode pass-through
 vbfc-cli factory-reset
 ```
 
+## Breadboard validation helper
+
+A small helper is included to print the expected command sequence for the breadboard validation workflow:
+
+```bash
+python -m vbfc_cli.breadboard --image /path/to/image.bin
+```
+
+This prints a scan → restore → map-add → shadow-mode sequence that matches the validation checklist in the breadboard notes.
+
+To run the same sequence against a connected device, use:
+
+```bash
+python -m vbfc_cli.breadboard_runner --image /path/to/image.bin --port COM5
+```
+
+To capture the output to a timestamped log file, use:
+
+```bash
+python -m vbfc_cli.breadboard_logger --image /path/to/image.bin --port COM5
+```
+
 ## Protocol
 
 Text line protocol over USB CDC serial. See `firmware/rp2040/README.md`.
