@@ -2,25 +2,21 @@
 #define VBFC_ED25519_H
 
 #include <stdint.h>
+#include <stdbool.h>
 
 /*
- * Ed25519 (RFC 8032) — verify-only.
+ * Ed25519 verify-only (RFC 8032).
  *
- * The interposer never signs, only verifies signatures on uploaded image
- * banks. This keeps the device's threat surface minimal (no private key, no
- * signing randomness source) and shrinks the code to just the verification
- * half of the reference implementation.
+ * Verify that `signature` (64 bytes) is a valid Ed25519 signature over
+ * the 32-byte SHA-256 payload hash in `msg` against `public_key` (32 bytes).
+ * Returns true if the signature is valid.
  *
- * Verify the Ed25519 signature `sig` (64 bytes) over the 32-byte `msg`
- * against the 32-byte `pubkey`. Returns 1 on valid, 0 on invalid.
- *
- * For our use, `msg` is always the 32-byte SHA-256 of a signed-image payload
- * (see image_check.c) — Ed25519 itself hashes `msg` again with SHA-512 as part
- * of the spec, so passing the 32-byte payload hash as the "message" is the
- * standard construction.
+ * This replaces the HMAC-SHA256 Phase A verify call in image_check.c.
+ * The header struct field layout stays the same — pub_key at bytes 44-75,
+ * signature at bytes 76-139 in the 256-byte VBFI header.
  */
-int ed25519_verify(const uint8_t sig[64],
-                   const uint8_t pubkey[32],
-                   const uint8_t msg[32]);
+bool ed25519_verify(const uint8_t msg[32],
+                    const uint8_t signature[64],
+                    const uint8_t public_key[32]);
 
 #endif /* VBFC_ED25519_H */

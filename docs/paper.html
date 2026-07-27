@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>VBFC: Virtual BIOS Firmware Controller — Academic Paper</title>
+<style>
+body { font-family: Georgia, 'Times New Roman', serif; max-width: 900px; margin: 40px auto; padding: 0 30px; line-height: 1.7; color: #222; }
+h1 { font-size: 1.8em; border-bottom: 2px solid #333; padding-bottom: 8px; }
+h2 { font-size: 1.4em; margin-top: 1.8em; color: #1a1a1a; }
+h3 { font-size: 1.15em; margin-top: 1.4em; }
+pre, code { background: #f5f5f5; padding: 2px 6px; border-radius: 4px; font-family: 'Consolas', 'Courier New', monospace; font-size: 0.9em; }
+pre { padding: 12px; overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; margin: 1em 0; }
+td, th { border: 1px solid #ccc; padding: 8px; text-align: left; }
+th { background: #f0f0f0; }
+blockquote { border-left: 4px solid #ccc; margin: 1em 0; padding: 0.5em 1em; color: #555; }
+</style>
+</head>
+<body>
+
+<h1>VBFC: A Programmable SPI Interposer for BIOS Feature Unlocking and Firmware Security</h1>
+
+<p><strong>Abstract</strong> — The BIOS firmware is the most privileged software layer in any x86 system, yet consumers and security researchers have limited means to inspect, modify, or extend it without expensive hardware programmers. We present the Virtual BIOS Firmware Controller (VBFC): an open-source, low-cost SPI interposer that sits between a motherboard's chipset and its SPI flash chip, selectively substituting bytes in real-time. Built around the Raspberry Pi RP2040 microcontroller and a 16 MB extension flash (W25Q128), the VBFC implements a cryptographic signing layer that prevents unauthorized image injection, an address translation map for transparent region remapping, an in-flight byte patching engine, and a SPI bus transaction sniffer. This paper covers the architecture, hardware design, firmware implementation, host software toolchain, and deployment considerations.</p>
+
+<h2>1. Introduction</h2>
+<p>Modern x86 platforms rely on SPI (Serial Peripheral Interface) flash to store boot firmware, Intel Management Engine (ME) / AMD Platform Security Processor (PSP) firmware, and UEFI variables. The chipset acts as SPI master and reads/writes this flash during boot and runtime. The VBFC takes a novel approach: instead of replacing or reflashing the chip, it interposes on the SPI bus and selectively shadows regions from a separate extension flash. This allows the interposer to present a modified view of BIOS contents without ever modifying the original chip.</p>
+
+<h2>2. System Architecture</h2>
+<h3>2.1 Hardware Design</h3>
+<p><strong>Components:</strong> RP2040 (264 KB SRAM, 2 MB flash), W25Q128 (16 MB extension flash), 74LVC1G3157 analog mux, SOIC-8 interposer board.</p>
+<p><strong>Signal flow:</strong> The PCH's CS/SCK/MOSI/MISO signals route through the interposer. MISO is multiplexed between the original flash (pass-through) and the RP2040 (active shadow). A bypass jumper (GPIO 18) forces hardware pass-through regardless of firmware state.</p>
+
+<h3>2.2 Firmware Architecture</h3>
+<p>The firmware runs a round-robin poll loop handling three concurrent tasks:</p>
+<ul>
+<li><strong>SPI bit-bang slave</strong> — decodes PCH transactions by monitoring SCK edges via a state machine: IDLE → CMD → ADDR (3 bytes) → DUMMY → DATA</li>
+<li><strong>USB CDC service</strong> — text-command and base64 binary protocol over USB virtual serial port</li>
+<li><strong>Watchdog safety</strong> — 500 ms watchdog, bypass jumper monitoring, fault-driven pass-through</li>
+</ul>
+
+<h4>SPI Arbiter Flow</h4>
+<pre>
+enter_data_phase() → shadow_map_lookup()
+  → ORIG? → release MISO, chip answers directly
+  → EXT?  → drive MISO, load_tx_byte()
+    → map address through ext_offset
+    → 256-byte prefetch cache (W25Q128 SPI1)
+    → patch_table_match() for byte substitution
+    → miso_drive_bit() — bit-bang MISO per SCK falling edge
+</pre>
+
+<h3>2.3 Shadow Map</h3>
+<table>
+<tr><th>Field</th><th>Size</th><th>Description</th></tr>
+<tr><td>start_addr</td><td>4 B</td><td>Flash address start</td></tr>
+<tr><td>size</td><td>4 B</td><td>Region size (power of 2, ≥ 4 KB)</td></tr>
+<tr><td>source</td><td>4 B (enum)</td><td>ORIG (0), EXT (1), OVERLAY (2)</td></tr>
+<tr><td>ext_offset</td><td>4 B</td><td>Extension flash offset for EXT sources</td></tr>
+</table>
+<p>Factory default: 64 KB at 0xFF0000 served from ext-flash offset 0.</p>
+
+<h3>2.4 Signed-Image Header (256 bytes)</h3>
+<pre>
+   0    4   magic         0x56424649 ("VBFI")
+   4    1   hdr_version   1
+   5    1   sig_alg       0x02 = HMAC-SHA256 (Phase A)
+   6    2   image_version monotonic anti-rollback counter
+   8    4   payload_len   bytes after header
+   12   32   sha256        SHA-256(payload)
+   44   32   pub_key       Ed25519 pubkey (Phase B, reserved)
+   76   32   hmac          HMAC-SHA256(key, sha256) (Phase A)
+   108  32   signature     Ed25519 sig (Phase B, reserved)
+   128  116   zero_pad     alignment to 256 bytes
+</pre>
+
+<h3>2.5 UF2 Firmware Format</h3>
+<p>The RP2040 firmware is distributed as a UF2 file [11], a 512-byte-block container format designed by Microsoft. Each block: 32-byte header (magic0=0x0A324655, magic1=0x9E5D5157) + 256-byte payload + 220-byte pad + 4-byte trailer (0x0AB16F30). A Python converter (vbfc_uf2.py) generates UF2 without picotool.</p>
+
+<h2>3. Build Characteristics</h2>
+<table>
+<tr><th>Metric</th><th>Value</th></tr>
+<tr><td>Text size (flash)</td><td>109,308 bytes</td></tr>
+<tr><td>BSS (SRAM)</td><td>20,864 bytes</td></tr>
+<tr><td>Binary (.bin)</td><td>104,808 bytes</td></tr>
+<tr><td>UF2 blocks</td><td>410 (209,920 bytes)</td></tr>
+</table>
+
+<h2>4. Security Analysis</h2>
+<p><strong>Threat model:</strong> Attacker can write arbitrary data to ext-flash via USB. Firmware and compiled-in HMAC key are trusted.</p>
+<ul>
+<li><strong>HMAC-SHA256 authentication:</strong> All served EXT images must pass HMAC verification before data reaches the PCH</li>
+<li><strong>Anti-rollback:</strong> Monotonic version counter, older signed images rejected</li>
+<li><strong>Bypass jumper:</strong> Hardware pass-through regardless of firmware state</li>
+<li><strong>Fault handler:</strong> CRC failures, invalid map, watchdog timeout → automatic pass-through</li>
+</ul>
+
+<h2>5. Use Cases</h2>
+<ul>
+<li><strong>BIOS Backup/Restore:</strong> Full chip dump via FLASH BACKUP, restore via ULOAD</li>
+<li><strong>Hidden-Feature Unlocking:</strong> analyze command scans for UEFI variables, ROMSIP tables, disabled PCI devices → emits PATCH ADD commands</li>
+<li><strong>Dual-BIOS:</strong> Bank 0 (0x2000) / Bank 1 (0x802000), switchable via bank command</li>
+<li><strong>Defective-Block Detection:</strong> check command CRC32s blocks and diffs against known-good reference</li>
+</ul>
+
+<h2>6. References</h2>
+<ol>
+<li>SPISPYP — https://github.com/osresearch/spispy</li>
+<li>coreboot project — https://www.coreboot.org/</li>
+<li>UEFI Forum. "UEFI Specification Version 2.10." 2022.</li>
+<li>Raspberry Pi Ltd. "RP2040 Datasheet." 2021.</li>
+<li>Winbond. "W25Q128JV Serial Flash Datasheet." 2019.</li>
+<li>RFC 2104: HMAC: Keyed-Hashing for Message Authentication. 1997.</li>
+<li>FIPS PUB 180-4: SHA-2 Standard. 2015.</li>
+<li>Microsoft. "UF2 File Format Specification." https://github.com/microsoft/uf2</li>
+</ol>
+
+<hr>
+<p><em>Repository: <a href="https://github.com/SowinySoft/Virtual-Bios-Firmware-Controller">github.com/SowinySoft/Virtual-Bios-Firmware-Controller</a> — MIT License</em></p>
+</body></html>

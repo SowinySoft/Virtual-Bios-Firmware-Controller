@@ -19,6 +19,7 @@ from vbfc_cli.device import open_device
 from vbfc_cli.crypto import generate_keypair, sign_payload, verify_image, DEFAULT_KEY_DIR
 from vbfc_cli.bios_analyzer import analyze_rom
 from vbfc_cli.block_check import check_rom
+from vbfc_cli.installer import install_bios, check_oem_image, _fetch_url, _maybe_unzip
 
 
 def parse_int(value: str) -> int:
