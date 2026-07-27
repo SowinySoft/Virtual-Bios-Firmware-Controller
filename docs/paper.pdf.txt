@@ -1,0 +1,9 @@
+Printable PDF export is prepared from the HTML manuscript at docs/paper.html.
+
+To generate the PDF locally on a machine with Chrome or Edge installed, run:
+
+chrome --headless --disable-gpu --print-to-pdf=docs/paper.pdf docs/paper.html
+
+or
+
+msedge --headless --disable-gpu --print-to-pdf=docs/paper.pdf docs/paper.html
