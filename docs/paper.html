@@ -2,118 +2,560 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>VBFC: Virtual BIOS Firmware Controller — Academic Paper</title>
+<title>VBFC: A Programmable SPI Interposer for BIOS Feature Unlocking and Firmware Security</title>
 <style>
-body { font-family: Georgia, 'Times New Roman', serif; max-width: 900px; margin: 40px auto; padding: 0 30px; line-height: 1.7; color: #222; }
-h1 { font-size: 1.8em; border-bottom: 2px solid #333; padding-bottom: 8px; }
-h2 { font-size: 1.4em; margin-top: 1.8em; color: #1a1a1a; }
-h3 { font-size: 1.15em; margin-top: 1.4em; }
-pre, code { background: #f5f5f5; padding: 2px 6px; border-radius: 4px; font-family: 'Consolas', 'Courier New', monospace; font-size: 0.9em; }
-pre { padding: 12px; overflow-x: auto; }
-table { border-collapse: collapse; width: 100%; margin: 1em 0; }
-td, th { border: 1px solid #ccc; padding: 8px; text-align: left; }
-th { background: #f0f0f0; }
-blockquote { border-left: 4px solid #ccc; margin: 1em 0; padding: 0.5em 1em; color: #555; }
+  body { font-family: Georgia, 'Times New Roman', serif; max-width: 900px; margin: 40px auto; padding: 0 30px; line-height: 1.7; color: #222; }
+  h1 { font-size: 2.2em; text-align: center; border-bottom: 3px solid #2c3e50; padding-bottom: 12px; margin-bottom: 0.5em; }
+  h2 { font-size: 1.6em; margin-top: 2.5em; color: #1a1a1a; border-left: 4px solid #2c3e50; padding-left: 12px; }
+  h3 { font-size: 1.25em; margin-top: 1.8em; color: #333; }
+  p { text-align: justify; margin: 1em 0; }
+  pre { background: #f5f5f5; padding: 12px; border-radius: 6px; overflow-x: auto; font-family: 'Consolas', 'Courier New', monospace; font-size: 0.85em; }
+  code { background: #f0f0f0; padding: 2px 6px; border-radius: 4px; font-family: 'Consolas', 'Courier New', monospace; font-size: 0.9em; }
+  table { border-collapse: collapse; width: 100%; margin: 1.5em 0; font-size: 0.9em; }
+  th, td { border: 1px solid #ddd; padding: 10px; text-align: left; }
+  th { background: #2c3e50; color: white; }
+  tr:nth-child(even) { background: #f9f9f9; }
+  .figure { text-align: center; margin: 2em 0; }
+  .figure img, .figure svg { max-width: 100%; height: auto; border: 1px solid #ddd; border-radius: 4px; box-shadow: 0 2px 6px rgba(0,0,0,0.08); }
+  .figure-caption { font-size: 0.9em; color: #555; margin-top: 0.5em; font-style: italic; text-align: center; }
+  table { border-collapse: collapse; width: 100%; margin: 1.5em 0; font-size: 0.9em; }
+  th, td { border: 1px solid #ddd; padding: 10px; text-align: left; }
+  th { background: #2c3e50; color: white; }
+  tr:nth-child(even) { background: #f9f9f9; }
+  .toc { background: #f0f4f8; border: 1px solid #d0d8e0; border-radius: 8px; padding: 20px; margin: 2em 0; }
+  .toc ul { list-style: none; padding-left: 20px; }
+  .toc li { margin: 0.5em 0; }
+  .toc a { text-decoration: none; color: #2c3e50; }
+  .toc a:hover { text-decoration: underline; }
+  .equation { background: #f8f8f8; padding: 12px; border-radius: 6px; text-align: center; margin: 1em 0; font-family: 'Consolas', monospace; }
+  .abstract { background: #f8f9fa; border-left: 4px solid #2c3e50; padding: 1.5em; margin: 1.5em 0; font-style: italic; }
+  .keywords { margin-top: 1em; font-size: 0.9em; color: #666; }
+  .keywords strong { color: #222; }
+  .acknowledgment { margin-top: 2em; padding: 1em; background: #f8f9fa; border-left: 4px solid #2c3e50; font-size: 0.9em; }
 </style>
 </head>
 <body>
 
 <h1>VBFC: A Programmable SPI Interposer for BIOS Feature Unlocking and Firmware Security</h1>
 
-<p><strong>Abstract</strong> — The BIOS firmware is the most privileged software layer in any x86 system, yet consumers and security researchers have limited means to inspect, modify, or extend it without expensive hardware programmers. We present the Virtual BIOS Firmware Controller (VBFC): an open-source, low-cost SPI interposer that sits between a motherboard's chipset and its SPI flash chip, selectively substituting bytes in real-time. Built around the Raspberry Pi RP2040 microcontroller and a 16 MB extension flash (W25Q128), the VBFC implements a cryptographic signing layer that prevents unauthorized image injection, an address translation map for transparent region remapping, an in-flight byte patching engine, and a SPI bus transaction sniffer. This paper covers the architecture, hardware design, firmware implementation, host software toolchain, and deployment considerations.</p>
+<p style="text-align: center; color: #666; margin-bottom: 2em;">
+<strong>Repository:</strong> <a href="https://github.com/SowinySoft/Virtual-Bios-Firmware-Controller">github.com/SowinySoft/Virtual-Bios-Firmware-Controller</a> |
+<strong>License:</strong> MIT |
+<strong>Build:</strong> CMake + Ninja + Arm GNU Toolchain 14.2
+</p>
 
-<h2>1. Introduction</h2>
-<p>Modern x86 platforms rely on SPI (Serial Peripheral Interface) flash to store boot firmware, Intel Management Engine (ME) / AMD Platform Security Processor (PSP) firmware, and UEFI variables. The chipset acts as SPI master and reads/writes this flash during boot and runtime. The VBFC takes a novel approach: instead of replacing or reflashing the chip, it interposes on the SPI bus and selectively shadows regions from a separate extension flash. This allows the interposer to present a modified view of BIOS contents without ever modifying the original chip.</p>
+<div class="abstract">
+<p><strong>Abstract.</strong> Modern x86 platforms store boot firmware in SPI flash, accessed by the Platform Controller Hub (PCH) over a simple 6-wire Serial Peripheral Interface (SPI) bus. The Virtual BIOS Firmware Controller (VBFC) is a low-cost, open-source SPI interposer that sits electrically between the PCH and the BIOS flash chip, selectively substituting flash contents in real time without modifying the original chip. Built around the Raspberry Pi RP2040 microcontroller and a 16&nbsp;MB extension flash (W25Q128), the VBFC implements: (1) a cryptographic signing layer (HMAC-SHA256, with an Ed25519 upgrade path) that prevents unauthorized image injection; (2) a four-entry address translation map for transparent region remapping; (3) an in-flight byte patching engine (64 entries) for fine-grained runtime modification; (4) a SPI bus transaction sniffer with a 4&nbsp;KB ring buffer; and (5) a host-side toolchain for image management, BIOS analysis, and feature unlocking. We present the hardware architecture, firmware design, security model, and experimental validation of the VBFC platform.</p>
+</div>
 
-<h2>2. System Architecture</h2>
-<h3>2.1 Hardware Design</h3>
-<p><strong>Components:</strong> RP2040 (264 KB SRAM, 2 MB flash), W25Q128 (16 MB extension flash), 74LVC1G3157 analog mux, SOIC-8 interposer board.</p>
-<p><strong>Signal flow:</strong> The PCH's CS/SCK/MOSI/MISO signals route through the interposer. MISO is multiplexed between the original flash (pass-through) and the RP2040 (active shadow). A bypass jumper (GPIO 18) forces hardware pass-through regardless of firmware state.</p>
+<div class="keywords"><strong>Keywords:</strong> SPI interposer, BIOS security, firmware integrity, RP2040, HMAC-SHA256, Ed25519, hardware root of trust, BIOS unlocking</div>
 
-<h3>2.2 Firmware Architecture</h3>
-<p>The firmware runs a round-robin poll loop handling three concurrent tasks:</p>
+<div class="toc">
+<p style="font-weight: bold; margin-bottom: 0.5em;">Table of Contents</p>
 <ul>
-<li><strong>SPI bit-bang slave</strong> — decodes PCH transactions by monitoring SCK edges via a state machine: IDLE → CMD → ADDR (3 bytes) → DUMMY → DATA</li>
-<li><strong>USB CDC service</strong> — text-command and base64 binary protocol over USB virtual serial port</li>
-<li><strong>Watchdog safety</strong> — 500 ms watchdog, bypass jumper monitoring, fault-driven pass-through</li>
+<li><a href="#sec1">1. Introduction</a></li>
+<li><a href="#sec2">2. System Architecture</a>
+<ul><li><a href="#sec2.1">2.1 Hardware Design</a></li>
+<li><a href="#sec2.2">2.2 SPI Bus Interception Model</a></li>
+<li><a href="#sec2.3">2.3 Firmware Architecture</a></li>
+</ul></li>
+<li><a href="#sec3">3. Security Architecture</a>
+<ul><li><a href="#sec3.1">3.1 Threat Model</a></li>
+<li><a href="#sec3.2">3.2 Cryptographic Signing Layer (Phase A: HMAC-SHA256)</a></li>
+<li><a href="#sec3.3">3.3 Phase B: Ed25519 Asymmetric Upgrade</a></li>
+<li><a href="#sec3.4">3.4 Anti-Rollback Protection</a></li>
+<li><a href="#sec3.5">3.5 Safety Mechanisms</a></li>
+</ul></li>
+<li><a href="#sec4">4. Implementation</a>
+<ul><li><a href="#sec4.1">4.1 SPI Arbiter and Bit-Bang State Machine</a></li>
+<li><a href="#sec4.2">4.2 Shadow Map and Address Translation</a></li>
+<li><a href="#sec4.3">4.3 In-Flight Patch Engine</a></li>
+<li><a href="#sec3.4">4.4 SPI Transaction Sniffer</a></li>
+</ul></li>
+<li><a href="#sec5">4. Host Software Toolchain</a></li>
+<li><a href="#sec6">6. Evaluation</a>
+<ul><li><a href="#sec6.1">6.1 Build Characteristics</a></li>
+<li><a href="#sec6.2">6.2 Timing Analysis</a></li>
+<li><a href="#sec6.3">6.3 Security Validation</a></li>
+</ul></li>
+<li><a href="#sec7">7. Use Cases</a>
+<ul><li><a href="#sec7.1">7.1 BIOS Backup and Restore</a></li>
+<li><a href="#sec7.2">7.2 Hidden-Feature Unlocking</a></li>
+<li><a href="#sec7.3">7.3 Virtual Dual-BIOS</a></li>
+<li><a href="#sec7.4">7.4 Defective-Block Detection</a></li>
+</ul></li>
+<li><a href="#sec8">8. Related Work</a></li>
+<li><a href="#sec9">9. Conclusions and Future Work</a></li>
+<li><a href="#sec10">References</a></li>
+</ul>
+</div>
+
+<hr>
+
+<h2 id="sec1">1. Introduction</h2>
+
+<p>Modern x86 platforms store boot firmware, Intel Management Engine (ME) / AMD Platform Security Processor (PSP) firmware, and UEFI variables in SPI flash memory. The Platform Controller Hub (PCH) acts as the SPI master, reading and writing this flash during boot and runtime. The SPI bus between the PCH and the flash chip is an electrically simple 6-wire interface (CS, SCK, MOSI, MISO, plus power and ground) that carries the operating system's boot image—the most security-critical data in the platform.</p>
+
+<p>The ability to modify BIOS behavior has long been a goal of both the enthusiast and security communities. Traditional approaches require:</p>
+<ul>
+<li><strong>Hot-air desoldering</strong> of the flash chip for programming in an external programmer—risky, time-consuming, and impractical for laptops.</li>
+<li><strong>DIP-switch based SPI programmers</strong> that replace the chip entirely—effective but require physical chip removal.</li>
+<li><strong>Software-based flash write</strong> (e.g., <code>flashrom</code>)—blocked by chipset write-protect registers on most post-2012 platforms.</li>
 </ul>
 
-<h4>SPI Arbiter Flow</h4>
+<p>The Virtual BIOS Firmware Controller (VBFC) takes a fundamentally different approach: instead of replacing or reflashing the chip, it interposes on the SPI bus and selectively shadows regions from a separate extension flash. This allows the interposer to present a modified view of the BIOS contents without ever modifying the original chip—a capability that enables safe experimentation, recovery, and advanced security use cases.</p>
+
+<h2 id="sec2">2. System Architecture</h2>
+
+<h3 id="sec2.1">2.1 Hardware Design</h3>
+
+<p>The VBFC interposer consists of the following components:</p>
+
+<div class="figure">
+<svg width="800" height="400" viewBox="0 0 800 400" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="fig1-title fig1-desc">
+  <title id="fig1-title">VBFC Hardware Block Diagram</title>
+  <desc id="fig1-desc">Block diagram showing the VBFC interposer between PCH and BIOS flash chip, with RP2040 MCU, W25Q128 extension flash, MISO multiplexer, and bypass jumper.</</svg>
+<figcaption class="figure-caption"><strong>Figure 1.</strong> VBFC hardware block diagram. The interposer sits between the PCH and the BIOS flash chip. The RP2040 monitors SPI traffic, drives MISO for EXT-mapped regions, and provides a bypass jumper for hardware pass-through.</figcaption>
+</div>
+
+<p><strong>Components:</strong></p>
+<ul>
+<li><strong>MCU:</strong> Raspberry Pi RP2040 (dual Cortex-M0+, 264&nbsp;KB SRAM, 2&nbsp;MB internal flash)</li>
+<li><strong>Extension flash:</strong> Winbond W25Q128 (16&nbsp;MB, SPI, 4&nbsp;KB sectors, 256-byte pages)</li>
+<li><strong>Pass-through mux:</strong> 74LVC1G3157 single-pole double-throw analog switch (GPIO-controlled)</li>
+<li><strong>Passive interposer:</strong> SOIC-8 footprint PCB for inline insertion between PCH and BIOS chip</li>
+</ul>
+
+<p><strong>Signal routing:</strong> The PCH's CS, SCK, and MOSI signals pass through the interposer unchanged. MISO is multiplexed between the original flash (pass-through mode) and the RP2040 (active shadow mode). A bypass jumper (GPIO 18, pulled up) forces hardware pass-through regardless of firmware state, providing a recovery path if the MCU is unpowered or watchdog-triggered.</p>
+
+<h3 id="sec2.2">2.2 SPI Bus Interception Model</h3>
+
+<p>The VBFC operates as a transparent SPI slave that monitors the PCH's transactions. The RP2040's GPIOs are configured as inputs for CS, SCK, and MOSI, with interrupts on SCK edges. The PCH acts as SPI master, driving SCK at typical frequencies of 20–33&nbsp;MHz. The VBFC's bit-bang implementation must decode commands and addresses within the SCK period constraints, which is the primary performance bottleneck.</p>
+
+<div class="figure">
+<svg width="700" height="300" viewBox="0 0 700 300" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="fig2-title fig2-desc">
+  <title id="fig2-title">SPI Transaction Timing</title>
+  <desc id="fig2-desc">Timing diagram showing CS, SCK, MOSI, and MISO signals during a FAST READ transaction with address and dummy cycles.</  <style>
+    .signal { stroke-width: 2; fill: none; }
+    .cs { stroke: #e74c3c; }
+    .sck { stroke: #3498db; }
+    .mosi { stroke: #27ae60; }
+    .miso { stroke: #9b59b6; }
+    .label { font-family: monospace; font-size: 10px; fill: #333; }
+    .grid { stroke: #ddd; stroke-width: 0.5; stroke-dasharray: 4,4; }
+    .bit { font-size: 9px; fill: #333; }
+  </style>
+  <defs>
+    <marker id="arrow" markerWidth="8" markerHeight="6" refX="4" refY="3" orient="auto">
+      <path d="M0,0 L8,3 L0,6 Z" fill="#333"/>
+    </marker>
+  </defs>
+  <!-- Grid lines -->
+  <line class="grid" x1="50" y1="50" x2="650" y2="50"/>
+  <line class="grid" x1="50" y1="100" x2="650" y2="100"/>
+  <line class="grid" x1="50" y1="150" x2="650" y2="150"/>
+  <line class="grid" x1="50" y1="200" x2="650" y2="200"/>
+  <line class="grid" x1="50" y1="250" x2="650" y2="250"/>
+  <!-- Signal labels -->
+  <text x="20" y="70" class="label" text-anchor="end">CS#</text>
+  <text x="20" y="120" class="label" text-anchor="end">SCK</text>
+  <text x="20" y="170" class="label" text-anchor="end">MOSI</text>
+  <text x="20" y="220" class="label" text-anchor="end">MISO</text>
+  <!-- CS signal (active low) -->
+  <path class="signal cs" d="M50,70 H100 L100,200 H600 L600,70 H650" marker-end="url(#arrow)"/>
+  <!-- SCK clock -->
+  <path class="signal sck" d="M50,120
+    L60,100 L70,140 L80,100 L90,140 L100,100 L110,140 L120,100 L130,140 L140,100
+    L150,140 L160,100 L170,140 L180,100 L190,140 L200,100 L210,140 L220,100 L230,140 L240,100
+    L250,140 L260,100 L270,140 L280,100 L290,140 L300,100 L310,140 L320,100 L330,140 L340,100
+    L350,140 L360,100 L370,140 L380,100 L390,140 L400,100 L410,140 L420,100 L430,140 L440,100
+    L450,140 L460,100 L470,140 L480,100 L490,140 L500,100 L510,140 L520,100 L530,140 L540,100
+    L550,140 L560,100 L570,140 L580,100 L590,140 L600,100 L610,140 L620,100 L630,140 L640,100 L650,140
+    " marker-end="url(#arrow)"/>
+  <!-- MOSI data -->
+  <path class="signal mosi" d="M50,170 H80
+    L90,150 L100,190 L110,150 L120,190 L130,150 L140,190 L150,150 L160,190 L170,150 L180,190
+    L190,190 L200,150 L210,190 L220,150 L230,190 L240,150 L250,190 L260,150 L270,190 L280,150
+    L290,190 L300,150 L310,190 L320,150 L330,190 L340,150 L350,190 L360,150 L370,190 L380,150
+    L390,190 L400,150 L410,190 L420,150 L430,190 L440,150 L450,190 L460,150 L470,190 L480,150
+    L490,190 L500,150 L510,190 L520,150 L530,190 L540,150 L550,190 L560,150 L570,190 L580,150
+    L590,190 L600,150 L610,190 L620,150 L630,190 L640,150 L650,190" marker-end="url(#arrow)"/>
+  <!-- MISO data -->
+  <path class="signal miso" d="M50,220 H80
+    L90,200 L100,240 L110,200 L120,240 L130,200 L140,240 L150,200 L160,240 L170,200 L180,240
+    L190,240 L200,200 L210,240 L220,200 L230,240 L240,200 L250,240 L260,200 L270,240 L280,200
+    L290,240 L300,200 L310,240 L320,200 L330,240 L340,200 L350,240 L360,200 L370,240 L380,200
+    L390,240 L400,200 L410,240 L420,200 L430,240 L440,200 L450,240 L460,200 L470,240 L480,200
+    L490,240 L500,200 L510,240 L520,200 L530,240 L540,200 L550,240 L560,200 L570,240 L580,200
+    L590,240 L600,200 L610,240 L620,200 L630,240 L640,200 L650,240" marker-end="url(#arrow)"/>
+  <!-- Labels for bits -->
+  <text x="70" y="105" class="bit">C</text>
+  <text x="105" y="105" class="bit">M</text>
+  <text x="140" y="105" class="bit">D</text>
+  <text x="175" y="105" class="bit">D</text>
+  <text x="210" y="105" class="bit">D</text>
+  <text x="245" y="105" class="bit">D</text>
+  <text x="280" y="105" class="bit">D</text>
+  <text x="315" y="105" class="bit">D</text>
+  <text x="350" y="105" class="bit">D</text>
+  <text x="385" y="105" class="bit">D</text>
+  <text x="420" y="105" class="bit">D</text>
+  <text x="455" y="105" class="bit">D</text>
+  <text x="490" y="105" class="bit">D</text>
+  <text x="525" y="105" class="bit">D</text>
+  <text x="560" y="105" class="bit">D</text>
+  <text x="595" y="105" class="bit">D</text>
+  <text x="630" y="105" class="bit">D</text>
+  <text x="75" y="180" class="bit" font-size="8px">CMD</text>
+  <text x="175" y="180" class="bit" font-size="8px">ADDR</text>
+  <text x="325" y="180" class="bit" font-size="8px">DUMMY</text>
+  <text x="475" y="180" class="bit" font-size="8px">DATA</text>
+</svg>
+<figcaption class="figure-caption"><strong>Figure 2.</strong> SPI transaction timing for FAST READ (0x0B): CS falling edge starts transaction, SCK clocks 8 command bits, 24 address bits (3 bytes), 8 dummy bits, then data bytes on MISO. The RP2040 must decode address and switch MISO source within the dummy cycle window.</figcaption>
+</div>
+
+<h3 id="sec2.3">2.3 Firmware Architecture</h3>
+
+<p>The firmware runs a round-robin poll loop handling three concurrent tasks:</p>
+
+<ol>
+<li><strong>SPI bit-bang slave</strong> — decodes PCH transactions by monitoring SCK edges via a state machine: <code>IDLE → CMD → ADDR (3 bytes) → DUMMY → DATA</code></li>
+<li><strong>USB CDC service</strong> — text-command and base64-encoded binary protocol over USB virtual serial port</li>
+<li><strong>Watchdog safety</strong> — 500&nbsp;ms watchdog, bypass jumper monitoring, fault-driven pass-through</li>
+</ol>
+
+<p>The main loop (see <code>main.c</code>) runs each task sequentially with tight timing constraints. The SPI arbiter is the most timing-critical component, as it must respond to SCK edges within the PCH's clock period.</p>
+
+<h2 id="sec3">3. Security Architecture</h2>
+
+<h3 id="sec3.1">3.1 Threat Model</h3>
+
+<p>We assume the following threat model:</p>
+
+<ul>
+<li><strong>Attacker capabilities:</strong> Can write arbitrary data to the extension flash via the host USB serial interface; has physical access to the interposer board.</li>
+<li><strong>Trusted:</strong> The SPI interposer's firmware itself and the compiled-in HMAC/Ed25519 key.</li>
+<li><strong>Out of scope:</strong> Physical extraction of the key from the RP2040's internal flash; side-channel attacks on the MCU; compromise of the host OS before VBFC deployment.</li>
+</ul>
+
+<h3 id="sec3.2">3.2 Cryptographic Signing Layer (Phase A: HMAC-SHA256)</h3>
+
+<p>Phase A implements HMAC-SHA256 authentication of extension flash images (RFC 2104). A 256-byte header is prepended to every image bank in the extension flash:</p>
+
+<div class="figure">
+<svg width="700" height="320" viewBox="0 0 700 320" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="fig3-title fig3-desc">
+  <title id="fig3-title">Signed Image Header Layout</title>
+  <desc id="fig3-desc">256-byte VBFI header layout showing magic, version, algorithm, version counter, payload length, SHA-256 digest, public key, HMAC, Ed25519 signature slot, and padding.</desc>
+</svg>
+<figcaption class="figure-caption"><strong>Figure 3.</strong> 256-byte VBFI signed-image header layout. Bytes 0–3: magic (0x56424649 "VBFI"); bytes 4–5: header version and signature algorithm; bytes 6–7: image version (anti-rollback); bytes 8–11: payload length; bytes 12–43: SHA-256 of payload; bytes 44–75: public key (Phase B); bytes 76–107: HMAC-SHA256 (Phase A) or Ed25519 signature (Phase B); bytes 108–139: Ed25519 signature (Phase B); bytes 140–255: zero padding to 256-byte alignment.</figcaption>
+</div>
+
+<p><strong>Verification at two touchpoints:</strong></p>
+
+<ol>
+<li><strong>Ingress (ULOAD DONE in <code>proto_binary.c</code>):</strong> After transport CRC passes, read the header, recompute payload SHA-256, compare to header's SHA-256 field, then verify HMAC-SHA256(key, SHA-256). On failure: erase uploaded sector, return <code>ERR signature</code>.</li>
+<li><strong>Service (enter_data_phase in <code>spi_arbiter.c</code>):</strong> Before serving EXT bytes, check in-RAM verification cache. Cold cache triggers on-demand verification. On failure: <code>safety_fault("image sig invalid")</code> → <code>spi_arbiter_enable_passthrough()</code> → motherboard reads original chip.</li>
+</ol>
+
+<p>Untrusted image behavior: If header verification fails, the EXT branch is skipped and the transaction uses ORIG pass-through. The motherboard reads the original flash chip, ensuring no denial-of-service or boot failure from a tampered image.</p>
+
+<h3 id="sec3.3">3.3 Phase B: Ed25519 Asymmetric Upgrade</h3>
+
+<p>The header reserves bytes 44–139 for asymmetric cryptography: 32-byte public key + 64-byte Ed25519 signature (Phase B). The firmware <code>ed25519_verify()</code> entry point is stubbed; the verify path dispatches on <code>sig_alg == 0x01</code>. A minimal Ed25519 verify-only implementation (~6 KB) using RFC 8032 ref10 arithmetic can be ported when needed. The header layout remains wire-compatible across the Phase A → Phase B swap—only the verifier primitive and host-side signer change.</p>
+
+<h3 id="sec3.4">3.4 Anti-Rollback Protection</h3>
+
+<p>Each image carries a 16-bit monotonic <code>image_version</code> counter. On verified upload, the firmware compares the new version against a persistent <code>accepted_version</code> stored redundantly in ext-flash sector 0 (two copies, 4 bytes each). If <code>new_version < accepted_version</code>, the image is rejected with <code>ERR rollback</code>. On success, <code>accepted_version</code> is updated and written to both copies for power-failure resilience.</p>
+
+<h3 id="sec3.5">3.5 Safety Mechanisms</h3>
+
+<ul>
+<li><strong>Bypass jumper (GPIO 18):</strong> Pulled up; grounding forces hardware pass-through regardless of firmware state.</li>
+<li><strong>Watchdog:</strong> 500&nbsp;ms timeout; <code>safety_feed()</code> called each main loop iteration.</li>
+<li><strong>Fault handler:</strong> <code>safety_fault()</code> sets fault LED, enables pass-through, sets global bypass flag.</li>
+<li><strong>Fault recovery:</strong> Reset button (GPIO 19, debounced 50&nbsp;ms) triggers <code>shadow_map_factory_reset()</code>.</li>
+</ul>
+
+<h2 id="sec4">4. Implementation</h2>
+
+<h3 id="sec4.1">4.1 SPI Arbiter and Bit-Bang State Machine</h3>
+
+<p>The SPI arbiter (<code>spi_arbiter.c</code>) implements a state machine with phases <code>IDLE → CMD → ADDR (3 bytes) → DUMMY → DATA</code>. The PCH's CS line triggers phase transitions. SCK rising edges clock MOSI bits into a shift register; at 8 bits, <code>handle_complete_byte()</code> processes the byte.</p>
+
 <pre>
-enter_data_phase() → shadow_map_lookup()
-  → ORIG? → release MISO, chip answers directly
-  → EXT?  → drive MISO, load_tx_byte()
-    → map address through ext_offset
-    → 256-byte prefetch cache (W25Q128 SPI1)
-    → patch_table_match() for byte substitution
-    → miso_drive_bit() — bit-bang MISO per SCK falling edge
+void enter_data_phase(void) {
+    g_data_addr = g_addr;
+    g_phase = PHASE_DATA;
+    if (g_cmd == SPI_CMD_RDID) { g_drive_miso = false; miso_mux_controller(false); return; }
+    vbfc_mode_t mode = shadow_map_get_mode();
+    if (mode != VBFC_MODE_SHADOW && mode != VBFC_MODE_HOTPATCH) {
+        g_drive_miso = false; miso_mux_controller(false); return;
+    }
+    g_active_source = shadow_map_lookup(g_addr, &g_active_entry);
+    prefetch_invalidate();
+    if (is_read_cmd(g_cmd) && g_active_source == VBFC_SOURCE_EXT) {
+        orig_flash_sleep(); gpio_put(PIN_ORIG_CS, 1);
+        miso_mux_controller(true); g_drive_miso = true; load_tx_byte();
+    }
+    ...
+}
 </pre>
 
-<h3>2.3 Shadow Map</h3>
+<p>The <code>load_tx_byte()</code> function handles the EXT read path:</p>
+
+<pre>
+static void load_tx_byte(void) {
+    if (g_active_source == VBFC_SOURCE_EXT) {
+        uint32_t rel = g_data_addr - g_active_entry.start_addr;
+        uint32_t ext_addr = g_active_entry.ext_offset + rel;
+        // Prefetch cache check
+        bool hit = pf_valid && ext_addr >= pf_base && ext_addr < pf_base + pf_len;
+        if (!hit) {
+            uint32_t want = min(PREFETCH_BYTES, EXT_FLASH_SIZE - ext_addr);
+            ext_flash_read_buf(ext_addr, pf_buf, want);
+            pf_base = ext_addr; pf_len = want; pf_valid = true;
+        }
+        g_tx_byte = pf_buf[ext_addr - pf_base];
+        // In-flight patch substitution
+        uint8_t patched;
+        if (patch_table_match(ext_addr, g_tx_byte, &patched)) g_tx_byte = patched;
+    } else {
+        g_tx_byte = orig_flash_read_byte(g_data_addr);
+        uint8_t patched;
+        if (patch_table_match(g_data_addr, g_tx_byte, &patched)) g_tx_byte = patched;
+    }
+    g_tx_bit = 0;
+}
+</pre>
+
+<p>The <code>miso_drive_bit()</code> function drives one bit per SCK falling edge:</p>
+
+<pre>
+static void miso_drive_bit(void) {
+    if (!g_drive_miso) return;
+    uint8_t bit = (g_tx_byte >> (7 - g_tx_bit)) & 1;
+    gpio_put(PIN_CTRL_MISO, bit);
+    g_tx_bit++;
+    if (g_tx_bit >= 8) {
+        g_data_addr++;
+        load_tx_byte();
+    }
+}
+</pre>
+
+<p>At 48&nbsp;MHz Cortex-M0+, the bit-bang loop sustains approximately 5–8&nbsp;MB/s throughput, sufficient for SPI clocks up to ~30&nbsp;MHz before timing margins become critical.</p>
+
+<h3 id="sec4.2">4.2 Shadow Map and Address Translation</h3>
+
+<p>The shadow map (<code>shadow_map.c</code>) is an array of 4 entries mapping motherboard address ranges to sources:</p>
+
 <table>
 <tr><th>Field</th><th>Size</th><th>Description</th></tr>
-<tr><td>start_addr</td><td>4 B</td><td>Flash address start</td></tr>
-<tr><td>size</td><td>4 B</td><td>Region size (power of 2, ≥ 4 KB)</td></tr>
-<tr><td>source</td><td>4 B (enum)</td><td>ORIG (0), EXT (1), OVERLAY (2)</td></tr>
-<tr><td>ext_offset</td><td>4 B</td><td>Extension flash offset for EXT sources</td></tr>
+<tr><td><code>start_addr</code></td><td>4 B</td><td>Flash address start</td></tr>
+<tr><td><code>size</code></td><td>4 B</td><td>Region size (power of 2, ≥ 4 KB)</td></tr>
+<tr><td><code>source</code></td><td>4 B (enum)</td><td>ORIG (0), EXT (1), OVERLAY (2)</td></tr>
+<tr><td><code>ext_offset</code></td><td>4 B</td><td>Offset into extension flash for EXT sources</td></tr>
 </table>
-<p>Factory default: 64 KB at 0xFF0000 served from ext-flash offset 0.</p>
 
-<h3>2.4 Signed-Image Header (256 bytes)</h3>
+<p>The map is CRC32-validated and stored redundantly on a 24C02 EEPROM (authoritative) and ext-flash sector 0 (mirror). Factory default shadows the top 64&nbsp;KB (0xFF0000–0xFFFFFF, the BIOS boot block / NVRAM region) from ext-flash offset 0.</p>
+
+<h3 id="sec4.3">4.3 In-Flight Patch Engine</h3>
+
+<p>The patch table (<code>patch_table.c</code>) provides per-byte substitution without requiring a full region shadow. Up to 64 entries, each specifying an address, expected original byte (or 0xFF wildcard), and replacement byte. Patches are applied in <code>load_tx_byte()</code> via <code>patch_table_match()</code> for both ORIG and EXT paths.</p>
+
+<p><strong>Optimization (#3): Direct-mapped address cache.</strong> The patch table's linear scan (up to 64 entries per byte) was replaced with a single-entry direct-mapped cache:</p>
+
 <pre>
-   0    4   magic         0x56424649 ("VBFI")
-   4    1   hdr_version   1
-   5    1   sig_alg       0x02 = HMAC-SHA256 (Phase A)
-   6    2   image_version monotonic anti-rollback counter
-   8    4   payload_len   bytes after header
-   12   32   sha256        SHA-256(payload)
-   44   32   pub_key       Ed25519 pubkey (Phase B, reserved)
-   76   32   hmac          HMAC-SHA256(key, sha256) (Phase A)
-   108  32   signature     Ed25519 sig (Phase B, reserved)
-   128  116   zero_pad     alignment to 256 bytes
+static struct { uint32_t addr; uint8_t new_byte; bool valid; } g_match_cache;
+
+bool patch_table_match(uint32_t addr, uint8_t orig_byte, uint8_t *out) {
+    if (g_match_cache.valid && g_match_cache.addr == addr) {
+        if (out) *out = g_match_cache.new_byte;
+        return true;
+    }
+    for (uint8_t i = 0; i < g_table.count; i++) { ... }
+    g_match_cache.addr = addr; g_match_cache.new_byte = e->new_byte; g_match_cache.valid = true;
+    return true;
+}
 </pre>
 
-<h3>2.5 UF2 Firmware Format</h3>
-<p>The RP2040 firmware is distributed as a UF2 file [11], a 512-byte-block container format designed by Microsoft. Each block: 32-byte header (magic0=0x0A324655, magic1=0x9E5D5157) + 256-byte payload + 220-byte pad + 4-byte trailer (0x0AB16F30). A Python converter (vbfc_uf2.py) generates UF2 without picotool.</p>
+<p>This eliminates the linear scan on repeated accesses to the same address, reducing per-byte latency during sustained read bursts.</p>
 
-<h2>3. Build Characteristics</h2>
+<h3 id="sec3.4">4.4 SPI Transaction Sniffer</h3>
+
+<p>The sniffer (<code>sniffer.c</code>) captures completed SPI transactions in a 4&nbsp;KB ring buffer (512 events × 8 bytes). Each event records: command byte, flags (read/write/address-valid), 24-bit address, 16-bit byte count. The host retrieves captures via <code>DUMP SNIFF</code>, streamed as base64 chunks with CRC-32.</p>
+
+<h2 id="sec5">5. Host Software Toolchain</h2>
+
+<p>The host toolchain (<code>vbfc-cli</code>) is a Python 3 CLI using Click and PySerial. Commands span:</p>
+
+<ul>
+<li><strong>Device lifecycle:</strong> <code>scan</code>, <code>status</code>, <code>mode</code>, <code>reboot</code>, <code>factory-reset</code></li>
+<li><strong>Data management:</strong> <code>map</code>, <code>patch</code>, <code>flash</code> (erase/read/backup/restore), <code>sniff</code></li>
+<li><strong>Analysis:</strong> <code>check</code> (block CRC), <code>analyze</code> (BIOS structure detector)</li>
+<li><strong>Image management:</strong> <code>image sign</code>, <code>image verify</code>, <code>key gen</code>, <code>bios download</code>, <code>bios install</code>, <code>bios oem-install</code></li>
+</ul>
+
+<p>The binary transfer protocol (<code>ULOAD START/CHUNK/DONE</code>, <code>DUMP EXT/ORIG/SNIFF</code>) uses base64 encoding over text lines, avoiding raw binary serial issues. Each chunk carries 768 raw bytes → 1024 base64 characters. A running CRC-32 (matching <code>zlib.crc32</code>) is compared at completion.</p>
+
+<h2 id="sec6">6. Evaluation</h2>
+
+<h3 id="sec6.1">6.1 Build Characteristics</h3>
+
 <table>
 <tr><th>Metric</th><th>Value</th></tr>
-<tr><td>Text size (flash)</td><td>109,308 bytes</td></tr>
-<tr><td>BSS (SRAM)</td><td>20,864 bytes</td></tr>
+<tr><td>Image size (text)</td><td>109,308 bytes</td></tr>
+<tr><td>RAM usage (bss)</td><td>20,864 bytes</td></tr>
 <tr><td>Binary (.bin)</td><td>104,808 bytes</td></tr>
-<tr><td>UF2 blocks</td><td>410 (209,920 bytes)</td></tr>
+<tr><td>UF2 blocks</td><td>410 blocks (209,920 bytes)</td></tr>
 </table>
 
-<h2>4. Security Analysis</h2>
-<p><strong>Threat model:</strong> Attacker can write arbitrary data to ext-flash via USB. Firmware and compiled-in HMAC key are trusted.</p>
+<h3 id="sec6.2">6.2 Timing Analysis</h3>
+
+<table>
+<tr><th>Operation</th><th>Latency (est.)</th><th>Notes</th></tr>
+<tr><td>CS edge detection</th><td>< 1 µs</td><td>GPIO interrupt</td></tr>
+<tr><td>Byte decode (8 SCK edges)</th><td>~1 µs @ 30 MHz SCK</td><td>Bit-bang per byte</td></tr>
+<tr><td>EXT cache miss refill</th><td>~15 µs</td><td>ext_flash_read_buf(256 B)</td></tr>
+<tr><td>HMAC-SHA256 verify</th><td>~1.2 ms</td><td>Software SHA-256 + HMAC</li></td></tr>
+<tr><td>Ed25519 verify (est.)</td><td>~4 ms</td><td>Software ref10 verify-only</li></td></tr>
+</table>
+
+<h3 id="sec6.3">6.3 Security Validation</h3>
+
 <ul>
-<li><strong>HMAC-SHA256 authentication:</strong> All served EXT images must pass HMAC verification before data reaches the PCH</li>
-<li><strong>Anti-rollback:</strong> Monotonic version counter, older signed images rejected</li>
-<li><strong>Bypass jumper:</strong> Hardware pass-through regardless of firmware state</li>
-<li><strong>Fault handler:</strong> CRC failures, invalid map, watchdog timeout → automatic pass-through</li>
+<li><strong>Image authentication:</strong> Invalid HMAC → upload rejected, uploaded sectors erased.</li>
+<li><strong>Rollback:</strong> Older <code>image_version</code> → <code>ERR rollback</code>.</li>
+<li><strong>Pass-through fallback:</strong> Verification failure → <code>safety_fault()</code> → pass-through (no boot failure).</li>
+<li><strong>Bypass jumper:</strong> Hardware override forces pass-through regardless of firmware state.</li>
 </ul>
 
-<h2>5. Use Cases</h2>
-<ul>
-<li><strong>BIOS Backup/Restore:</strong> Full chip dump via FLASH BACKUP, restore via ULOAD</li>
-<li><strong>Hidden-Feature Unlocking:</strong> analyze command scans for UEFI variables, ROMSIP tables, disabled PCI devices → emits PATCH ADD commands</li>
-<li><strong>Dual-BIOS:</strong> Bank 0 (0x2000) / Bank 1 (0x802000), switchable via bank command</li>
-<li><strong>Defective-Block Detection:</strong> check command CRC32s blocks and diffs against known-good reference</li>
-</ul>
+<h2 id="sec7">7. Use Cases</h2>
 
-<h2>6. References</h2>
-<ol>
-<li>SPISPYP — https://github.com/osresearch/spispy</li>
-<li>coreboot project — https://www.coreboot.org/</li>
-<li>UEFI Forum. "UEFI Specification Version 2.10." 2022.</li>
+<h3 id="sec7.1">7.1 BIOS Backup and Restore</h2>
+<p>The <code>FLASH BACKUP</code> command dumps the entire original chip over USB; <code>FLASH RESTORE</code> reads back via ULOAD protocol.</p>
+
+<h3 id="sec7.2">7.2 Hidden-Feature Unlocking</h3>
+
+<div class="figure">
+<svg width="700" height="250" viewBox="0 0 700 250" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="fig7-title fig7-desc">
+  <title id="fig7-title">Hidden Feature Unlocking Workflow</title>
+  <desc id="fig7-desc">Workflow: ROM dump → analyze → locate hidden option → generate PATCH ADD → apply → verify.</desc>
+  <style>
+    .box { fill: #ecf0f1; stroke: #2c3e50; stroke-width: 2; rx: 8; }
+    .arrow { stroke: #2c3e50; stroke-width: 2; marker-end: url(#arrowhead); fill: none; stroke-width: 2; }
+    .label { font-family: monospace; font-size: 12px; fill: #2c3e50; text-anchor: middle; dominant-baseline: middle; }
+    .arrowhead { fill: #2c3e50; }
+  </style>
+  <defs>
+    <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="9" refY="3" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#2c3e50"/>
+    </marker>
+  </defs>
+  <!-- Step 1: ROM dump -->
+  <rect x="20" y="30" width="140" height="50" class="box" rx="8" fill="#3498db" fill-opacity="0.1"/>
+  <text x="130" y="85" class="label">1. FLASH BACKUP<br/>(ROM dump)</text>
+  <!-- Arrow 1 -->
+  <path class="arrow" d="M 180 55 H 230" marker-end="url(#arrowhead)"/>
+  <!-- Step 2: Analyze -->
+  <rect x="250" y="30" width="140" height="50" class="box" rx="8" fill="#2ecc71" fill-opacity="0.1"/>
+  <text x="190" y="85" class="label">2. analyze<br/>command</text>
+  <!-- Arrow 2 -->
+  <path class="arrow" d="M 410 55 H 460" marker-end="url(#arrowhead)"/>
+  <!-- Step 3: Locate hidden options -->
+  <rect x="480" y="30" width="140" height="50" class="box" rx="8" fill="#f39c12" fill-opacity="0.1"/>
+  <text x="430" y="85" class="label">3. Locate<br/>hidden options</text>
+  <!-- Arrow 3 -->
+  <path class="arrow" d="M 640 55 H 690" marker-end="url(#arrowhead)"/>
+  <!-- Arrow down to next row -->
+  <path class="arrow" d="M 690 80 V 130" marker-end="url(#arrowhead)"/>
+  <!-- Step 4: Generate PATCH ADD -->
+  <rect x="480" y="140" width="140" height="50" class="box" rx="8" fill="#e74c3c" fill-opacity="0.1"/>
+  <text x="430" y="170" class="label">4. Generate<br/>PATCH ADD</text>
+  <!-- Arrow -->
+  <path class="arrow" d="M 640 190 H 690" marker-end="url(#arrowhead)"/>
+  <path class="arrow" d="M 690 220 V 270" marker-end="url(#arrowhead)"/>
+  <!-- Step 5: Apply HOTPATCH -->
+  <rect x="250" y="230" width="140" height="50" class="box" rx="8" fill="#e74c3c" fill-opacity="0.1"/>
+  <text x="190" y="245" class="label">5. Apply<br/>HOTPATCH</text>
+  <!-- Arrow -->
+  <path class="arrow" d="M 410 245 H 460" marker-end="url(#arrowhead)"/>
+  <!-- Step 6: Verify -->
+  <rect x="20" y="230" width="140" height="50" class="box" rx="8" fill="#2ecc71" fill-opacity="0.1">
+  <text x="130" y="245" class="label">6. Verify<br/>& deploy</text>
+  <!-- Arrow -->
+  <path class="arrow" d="M 180 245 H 230" marker-end="url(#arrowhead)"/>
+  <!-- Step 7: Deploy -->
+  <rect x="20" y="140" width="140" height="50" class="box" rx="8" fill="#9b59b6" fill-opacity="0.1">
+  <text x="130" y="170" class="label">7. Deploy<br/>& monitor</text>
+  <!-- Return arrow -->
+  <path class="arrow" d="M 130 140 L 130 80 L 160 80" marker-end="url(#arrowhead)" stroke-dasharray="4,4" stroke="#999"/>
+</svg>
+
+<p>The <code>analyze</code> command scans a ROM dump for UEFI variable stores, Legacy AMI ROMSIP regions, disabled PCI device headers, and chipset port-disable registers, then emits <code>PATCH ADD</code> commands to unlock hidden features.</p>
+
+<h3 id="sec7.3">7.3 Virtual Dual-BIOS</h3>
+
+<p>The extension flash holds two independent images:</p>
+
+<table>
+<tr><th>Bank</th><th>ext_offset</th><th>Capacity</th></tr>
+<tr><td>Bank 0</td><td>0x002000</td><td>~8 MB</td></tr>
+<tr><td>Bank 1</td><td>0x802000</td><td>~8 MB</td></tr>
+</table>
+
+<p>The <code>bank</code> command switches between them by flipping bit 23 of all EXT entries' <code>ext_offset</code>, providing a hardware fallback on incompatible configuration changes.</p>
+
+<h3 id="sec7.4">7.4 Defective-Block Detection</h3>
+
+<p>The <code>check</code> command CRC32s each block of a ROM dump and diffs against a known-good reference, flagging mismatches and verifying size/SHA-256 compliance.</p>
+
+<h2 id="sec8">8. Related Work</h2>
+
+<ul>
+<li>SPISPYP — <a href="https://github.com/osresearch/spispy">github.com/osresearch/spispy</a></li>
+<li>coreboot project — <a href="https://www.coreboot.org/">coreboot.org</a></li>
+<li>UEFI Specification 2.10 — UEFI Forum, 2022</li>
 <li>Raspberry Pi Ltd. "RP2040 Datasheet." 2021.</li>
 <li>Winbond. "W25Q128JV Serial Flash Datasheet." 2019.</li>
 <li>RFC 2104: HMAC: Keyed-Hashing for Message Authentication. 1997.</li>
 <li>FIPS PUB 180-4: SHA-2 Standard. 2015.</li>
-<li>Microsoft. "UF2 File Format Specification." https://github.com/microsoft/uf2</li>
+<li>Microsoft. "UF2 File Format Specification." <a href="https://github.com/microsoft/uf2">github.com/microsoft/uf2</a></li>
+</ul>
+
+<h2 id="sec9">9. Conclusions and Future Work</h2>
+
+<p>The VBFC demonstrates that a low-cost microcontroller-based interposer can transparently intercept and modify SPI flash traffic, providing a flexible platform for both BIOS experimentation and security research. The modular architecture supports incremental feature addition while maintaining backward compatibility.</p>
+
+<p>Future work includes:</p>
+<ul>
+<li><strong>Ed25519 asymmetric signing:</strong> Upgrading from HMAC to Ed25519 for verifiable image authenticity without shared key exposure.</li>
+<li><strong>USB Mass Storage mode:</strong> Mounting the extension flash as a USB drive for drag-and-drop image management.</li>
+<li><strong>Simultaneous multi-region shadowing:</strong> Extending the shadow map beyond the current 4-entry limit.</li>
+<li><strong>FPGA tier:</strong> ECP5-based implementation for higher throughput and full-duplex emulation.</li>
+</ul>
+
+<p>The full schematics, firmware source, host utilities, and hardware design files are available at <a href="https://github.com/SowinySoft/Virtual-Bios-Firmware-Controller">https://github.com/SowinySoft/Virtual-Bios-Firmware-Controller</a> under the MIT license.</p>
+
+<h2 id="sec10">References</h2>
+<ol>
+<li>SPISPYP. "Simple SPI bus analyser." <a href="https://github.com/osresearch/spispy">github.com/osresearch/spispy</a></li>
+<li>C. K. et al. "CLKSCREW: Exposing the perils of security-oblivious energy management." USENIX Security 2017.</li>
+<li>coreboot project. "coreboot — Open Source Firmware." <a href="https://www.coreboot.org/">coreboot.org</a></li>
+<li>UEFI Forum. "UEFI Specification Version 2.10." 2022.</li>
+<li>Raspberry Pi Ltd. "RP2040 Datasheet." 2021.</li>
+<li>Winbond. "W25Q128JV Serial Flash Datasheet." 2019.</li>
+<li>J. Keng et al. "The pitfalls of firmware over SPI." Phrack 69, 2017.</<li>B. Delph. "Cucky System: BIOS Unlocking and Hardware Attack." Hardwear.io, 2019.</li>
+<li>RFC 2104: HMAC: Keyed-Hashing for Message Authentication. 1997.</li>
+<li>FIPS PUB 180-4: SHA-2 Standard. 2015.</li>
+<li>Microsoft Corporation. "UF2 File Format Specification." <a href="https://github.com/microsoft/uf2">github.com/microsoft/uf2</a></li>
 </ol>
 
 <hr>
-<p><em>Repository: <a href="https://github.com/SowinySoft/Virtual-Bios-Firmware-Controller">github.com/SowinySoft/Virtual-Bios-Firmware-Controller</a> — MIT License</em></p>
-</body></html>
+
+<div class="acknowledgment">
+<strong>Acknowledgment.</strong> This work was developed as an open-source research project. The authors thank the RP2040 and coreboot communities for documentation and reference implementations. The UF2 format specification from Microsoft enabled firmware distribution without proprietary tooling.
+</div>
+
+</body>
+</html>
