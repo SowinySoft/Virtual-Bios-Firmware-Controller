@@ -1,0 +1,117 @@
+%==============================================================================
+% Section 6: Security Architecture
+%==============================================================================
+\section{Security Architecture}
+\label{sec:security}
+
+The \vbfc security architecture ensures that only authorized, untampered, and non-downgraded firmware images are served to the \ac{PCH}. It employs a two-phase cryptographic design: Phase A (deployed) uses symmetric \ac{HMAC}-\ac{SHA}256 with a hardware-rooted key; Phase B (reserved) supports asymmetric ECDSA-P256 for multi-party authorization.
+
+\subsection{Signed Image Header Format}
+Each firmware image in the extension flash is prefixed by a 256-byte signed header (\appref{app:signed_header}, \figref{fig:signed_header}). The header binds the image to the provisioning authority and enforces version monotonicity.
+
+\begin{figure}[t]
+\centering
+\begin{tikzpicture}[
+    node distance=0,
+    headerbox/.style={
+        draw, thick, minimum height=8mm,
+        fill=vbfcBlue!10, font=\footnotesize\bfseries, text=vbfcDarkBlue
+    },
+    fieldbox/.style={
+        draw, thick, minimum height=8mm,
+        fill=white, font=\footnotesize
+    },
+    reservedbox/.style={
+        draw, thick, minimum height=8mm,
+        fill=vbfcLightGray, font=\footnotesize, pattern=north east lines, pattern color=vbfcMediumGray
+    },
+    offsetstyle/.style={font=\scriptsize, text=vbfcMediumGray}
+]
+
+% Offsets column
+\node[headerbox, minimum width=14mm] (off_h) {Offset};
+\node[fieldbox, minimum width=14mm, below=of off_h] (off0) {0x00};
+\node[fieldbox, minimum width=14mm, below=of off0] (off4) {0x04};
+\node[fieldbox, minimum width=14mm, below=of off4] (off5) {0x05};
+\node[fieldbox, minimum width=14mm, below=of off5] (off6) {0x06};
+\node[fieldbox, minimum width=14mm, below=of off6] (off8) {0x08};
+\node[fieldbox, minimum width=14mm, below=of off8] (offc) {0x0C};
+\node[fieldbox, minimum width=14mm, below=of offc] (off2c) {0x2C};
+\node[fieldbox, minimum width=14mm, below=of off2c] (off4c) {0x4C};
+\node[fieldbox, minimum width=14mm, below=of off4c] (off6c) {0x6C};
+\node[fieldbox, minimum width=14mm, below=of off6c] (off8c) {0x8C};
+
+% Size column
+\node[headerbox, minimum width=12mm, right=of off_h] (sz_h) {Size};
+\node[fieldbox, minimum width=12mm, below=of sz_h] (sz4) {4};
+\node[fieldbox, minimum width=12mm, below=of sz4] (sz1) {1};
+\node[fieldbox, minimum width=12mm, below=of sz1] (sz1b) {1};
+\node[fieldbox, minimum width=12mm, below=of sz1b] (sz2) {2};
+\node[fieldbox, minimum width=12mm, below=of sz2] (sz4b) {4};
+\node[fieldbox, minimum width=12mm, below=of sz4b] (sz32) {32};
+\node[fieldbox, minimum width=12mm, below=of sz32] (sz32b) {32};
+\node[fieldbox, minimum width=12mm, below=of sz32b] (sz32c) {32};
+\node[fieldbox, minimum width=12mm, below=of sz32c] (sz32d) {32};
+\node[fieldbox, minimum width=12mm, below=of sz32d] (sz116) {116};
+
+% Field column
+\node[headerbox, minimum width=60mm, right=of sz_h] (fl_h) {Field};
+\node[fieldbox, minimum width=60mm, below=of fl_h] (fl0) {Magic = \texttt{0x56424649} (\texttt{"VBFI"})};
+\node[fieldbox, minimum width=60mm, below=of fl0] (fl1) {Header Version = 1};
+\node[fieldbox, minimum width=60mm, below=of fl1] (fl2) {Sig Algorithm: 0x01=HMAC-SHA256, 0x02=ECDSA-P256};
+\node[fieldbox, minimum width=60mm, below=of fl2] (fl3) {Image Version (uint16, anti-rollback)};
+\node[fieldbox, minimum width=60mm, below=of fl3] (fl4) {Payload Length (bytes, excludes header)};
+\node[fieldbox, minimum width=60mm, below=of fl4] (fl5) {SHA-256(payload)};
+\node[reservedbox, minimum width=60mm, below=of fl5] (fl6) {Public Key (ECDSA-P256, Phase B)};
+\node[fieldbox, minimum width=60mm, below=of fl6] (fl7) {HMAC-SHA256(key, payload) (Phase A)};
+\node[reservedbox, minimum width=60mm, below=of fl7] (fl8) {ECDSA Signature (Phase B)};
+\node[fieldbox, minimum width=60mm, below=of fl8] (fl9) {Reserved / Zero Padding};
+
+\end{tikzpicture}
+\caption{Signed Image Header (256 bytes). Phase A fields (white) are active; Phase B fields (striped) are reserved for future asymmetric signing. The header is integrity-protected: any modification changes the payload hash and invalidates the HMAC/signature.}
+\label{fig:signed_header}
+\end{figure}
+
+\subsection{Phase A: HMAC-SHA256 (Deployed)}
+\begin{itemize}
+    \item \textbf{Key Derivation:} A 256-bit master key $K_m$ is generated on the provisioning host and programmed into the \rp \ac{OTP} (One-Time Programmable) memory during manufacturing. The \ac{OTP} is read-only after locking. The \rp hardware \ac{SHA}256 accelerator computes $\HMAC_{K_m}(\text{payload})$.
+    \item \textbf{Verification:} On boot, the arbiter firmware reads the header, computes $\HMAC_{K_m}(\text{payload})$, and compares with the stored HMAC field (offset 0x4C). Mismatch $\to$ image rejected, arbiter falls back to original flash.
+    \item \textbf{Anti-Rollback:} The \texttt{image\_version} field (offset 0x06, uint16) is compared against a monotonic counter stored in \rp \ac{OTP} (or \ac{EEPROM} with tamper evidence). If $\text{version} \le \text{stored\_version}$, image rejected. On accept, stored version updated.
+    \item \textbf{Payload Hash:} The \texttt{SHA-256(payload)} field (offset 0x0C) provides a fast integrity check before HMAC verification and enables detection of accidental corruption.
+\end{itemize}
+
+\subsection{Phase B: ECDSA-P256 (Reserved)}
+For scenarios requiring multi-party authorization (e.g., enterprise IT + vendor + user), Phase B reserves space for:
+\begin{itemize}
+    \item \texttt{pub\_key} (0x2C, 32 bytes): ECDSA-P256 public key (compressed).
+    \item \texttt{signature} (0x6C, 32 bytes): ECDSA signature over \texttt{SHA-256(payload)}.
+    \item Verification uses the \rp hardware \ac{AES}/SHA accelerator (or software fallback).
+    \item Key rotation: \texttt{pub\_key} can be updated via a signed key-rotation manifest.
+\end{itemize}
+
+\subsection{Key Management and Provisioning}
+\begin{enumerate}
+    \item \textbf{Provisioning Host:} Air-gapped machine running \texttt{vbfc-host}. Generates $K_m$, stores in HSM / encrypted keystore.
+    \item \textbf{Device Enrollment:} \vbfc connected via USB-C. \texttt{vbfc-host} writes $K_m$ to \rp \ac{OTP} (one-time, irreversible). Device now bound to this provisioning authority.
+    \item \textbf{Image Signing:} For each firmware image, \texttt{vbfc-host} computes payload hash, HMAC, constructs header, writes to extension flash.
+    \item \textbf{Revocation:} Increment \texttt{image\_version} and re-sign. Old images automatically rejected by anti-rollback.
+    \item \textbf{Compromise Recovery:} If $K_m$ compromised, physical \vbfc replacement required (OTP cannot be rewritten). Future revision may support key rotation via Phase B.
+\end{enumerate}
+
+\subsection{Threat Mitigation Summary}
+\begin{table}[t]
+\centering
+\caption{Security Properties and Mitigations}
+\label{tab:security_properties}
+\begin{tabular}{@{}lll@{}}
+\toprule
+\textbf{Property} & \textbf{Mechanism} & \textbf{Residual Risk} \\
+\midrule
+Authenticity & HMAC-SHA256 with OTP key & Key extraction via invasive attack \\
+Integrity & SHA-256 payload hash + HMAC & $2^{-256}$ forgery probability \\
+Anti-Rollback & Monotonic version in OTP & OTP rollback via glitching (mitigated) \\
+Transparency & Cycle-accurate PIO arbiter & Timing side-channels (future work) \\
+Non-Bypass & Arbiter in hardware, no SW disable & Physical bypass jumper (tamper-evident) \\
+\bottomrule
+\end{tabular}
+\end{table}

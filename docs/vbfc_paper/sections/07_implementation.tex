@@ -1,0 +1,138 @@
+%==============================================================================
+% Section 7: Implementation
+%==============================================================================
+\section{Implementation}
+\label{sec:implementation}
+
+\subsection{RP2040 Firmware}
+The \vbfc firmware (\SI{\approx 110}{KB} text, \SI{21}{KB} BSS) is written in C (Pico SDK 2.0) with critical \ac{PIO} routines in \ac{PIO} assembly. The dual-core architecture is utilized as follows:
+
+\begin{itemize}
+    \item \textbf{Core 0 (Arbiter Core):} Runs the \ac{SPI} arbiter supervision loop, handles \ac{PIO} IRQs for shadow map lookup, manages the patch cache, drives the crypto engine, and services USB CDC for host communication.
+    \item \textbf{Core 1 (I/O Core):} Handles USB mass storage / CDC enumeration, \ac{QSPI} XIP flash access for image reads, sniffer buffer drain, and background tasks (CRC verification, cache fill DMA).
+\end{itemize}
+
+\subsubsection{PIO Assembly: SPI Arbiter}
+The \ac{PIO} program (\SI{\approx 120}{instructions} across 4 SMs) implements the state machine from \secref{sec:spi_arbiter}. Key techniques:
+\begin{itemize}
+    \item \textbf{Side-set pins:} \texttt{CS\#}, \texttt{SCK}, \texttt{MOSI} sampled simultaneously each cycle.
+    \item \textbf{FIFO buffering:} TX FIFO holds outbound \texttt{MISO} bytes; RX FIFO captures inbound command/address.
+    \item \textbf{IRQ signaling:} SM1 asserts IRQ on address capture; Core 0 ISR performs shadow map lookup in \SI{<200}{ns}.
+    \item \textbf{Jump tables:} Command dispatch via computed jumps for minimal cycle count.
+\end{itemize}
+
+\subsubsection{Cryptographic Engine}
+The \rp includes a hardware \ac{SHA}256 accelerator (accessed via \texttt{hardware\_sha256} API). HMAC is computed as:
+\begin{lstlisting}[style=vbfcStyle, caption={HMAC-SHA256 Computation}, label={lst:hmac}]
+void hmac_sha256(const uint8_t *key, size_t keylen,
+                 const uint8_t *data, size_t datalen,
+                 uint8_t out[32]) {
+    // Key padding per RFC 2104
+    uint8_t k_ipad[64], k_opad[64];
+    // ... (standard HMAC construction)
+    sha256_hw_start(); // Hardware accelerator
+    sha256_hw_write(k_ipad, 64);
+    sha256_hw_write(data, datalen);
+    sha256_hw_finish(inner_hash);
+    sha256_hw_start();
+    sha256_hw_write(k_opad, 64);
+    sha256_hw_write(inner_hash, 32);
+    sha256_hw_finish(out);
+}
+\end{lstlisting}
+
+Verification takes \SI{\approx 1.2}{ms} for a \SI{16}{MB} image (hardware accelerated), performed once at boot before arbiter activation.
+
+\subsection{Extension Flash Layout}
+The \wq (\SI{16}{MB}) is partitioned as follows:
+
+\begin{table}[h]
+\centering
+\caption{Extension Flash Memory Map}
+\label{tab:flash_map}
+\begin{tabular}{@{}llll@{}}
+\toprule
+\textbf{Region} & \textbf{Offset} & \textbf{Size} & \textbf{Contents} \\
+\midrule
+Header / Boot   & 0x00000000 & 64 KB   & Signed header + arbiter config \\
+Image 0 (Active)& 0x00010000 & 7.5 MB  & Primary firmware image \\
+Image 1 (Staging)& 0x00790000 & 7.5 MB  & Staging area for updates \\
+Shadow Map      & 0x00EE0000 & 4 KB    & Primary shadow map (mirrored in EEPROM) \\
+Patch Table     & 0x00EE1000 & 64 KB   & Patch entries (max 8192 entries) \\
+Sniffer Buffer  & 0x00EF1000 & 64 KB   & Persistent sniffer log (circular) \\
+Config / NVRAM  & 0x00F01000 & 1 MB    & User config, keys (encrypted), logs \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Two image slots enable atomic updates: \texttt{vbfc-host} writes to staging slot, verifies, then updates shadow map to point to new slot (single 4-byte write).
+
+\subsection{Host Toolchain: \texttt{vbfc-host}}
+The provisioning CLI is a Python 3.11+ package (\texttt{pip install vbfc-host}) with subcommands:
+
+\begin{lstlisting}[style=vbfcStyle, caption={\texttt{vbfc-host} Command Structure}, label={lst:vbfc_host}]
+$ vbfc-host --help
+Usage: vbfc-host [OPTIONS] COMMAND [ARGS]...
+
+Commands:
+  info          Show device info (version, flash ID, shadow map)
+  sign          Sign a firmware image (adds header, HMAC)
+  flash         Write signed image to extension flash
+  patch         Create/apply patch table entries
+  shadow        Manage shadow map (list, add, remove, set-active)
+  sniff         Capture SPI transactions (live or dump)
+  verify        Verify image integrity (hash, HMAC, version)
+  bootstrap     Provision new device (write OTP key, init flash)
+  recover       Force bypass mode / factory reset
+\end{lstlisting}
+
+\subsubsection{Image Signing Workflow}
+\begin{enumerate}
+    \item User provides raw firmware binary (e.g., extracted via \texttt{UEFITool}).
+    \item \texttt{vbfc-host sign --input bios.bin --output bios\_signed.bin --version 42}:
+    \begin{itemize}
+        \item Computes SHA-256 of payload.
+        \item Reads provisioning key from local keystore (encrypted, passphrase-protected).
+        \item Computes HMAC-SHA256(key, payload).
+        \item Constructs 256-byte header with magic, version, hash, HMAC.
+        \item Prepends header to payload $\to$ \texttt{bios\_signed.bin}.
+    \end{itemize}
+    \item \texttt{vbfc-host flash --image bios\_signed.bin --slot 0} writes to extension flash.
+    \item \texttt{vbfc-host shadow set-active --slot 0} updates shadow map to map target regions to new image.
+\end{enumerate}
+
+\subsubsection{Patch Generation}
+Patches are typically derived by diffing original vs. modified firmware:
+\begin{lstlisting}[style=vbfcStyle, caption={Patch Creation from Binary Diff}, label={lst:patch_gen}]
+$ vbfc-host patch create --original bios_orig.bin --modified bios_mod.bin \
+    --region hybrid --base 0x100000 --output patches.json
+# Output: JSON array of patch_entry structs
+$ vbfc-host patch apply --input patches.json --flash-slot 0
+\end{lstlisting}
+
+The tool supports manual patch entry for targeted modifications (e.g., flipping a specific byte to unlock a hidden menu).
+
+\subsection{Hardware Bill of Materials}
+\begin{table}[h]
+\centering
+\caption{VBFC Hardware BOM (Per Unit, Estimated)}
+\label{tab:bom}
+\begin{tabular}{@{}llrr@{}}
+\toprule
+\textbf{Component} & \textbf{Part Number} & \textbf{Qty} & \textbf{Cost (USD)} \\
+\midrule
+RP2040 MCU        & RP2040               & 1 & \$1.00 \\
+SPI Flash 16 MB   & W25Q128JVSIQ         & 1 & \$1.50 \\
+Analog Switch     & 74LVC1G3157GW        & 1 & \$0.25 \\
+EEPROM 256 B      & 24C02WP              & 1 & \$0.15 \\
+USB-C Connector   & TYPE-C-31-M-12       & 1 & \$0.50 \\
+PCB (4-layer)     & Custom, 50x30mm      & 1 & \$2.00 \\
+Passives (C, R)   & 0402/0603            & $\sim$20 & \$0.30 \\
+SOIC-8 Clip/Socket& Pomona 5250 / Custom & 1 & \$5.00 \\
+\midrule
+\textbf{Total}      &                      &    & \textbf{\$10.70} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The \ac{PCB} is a 4-layer design (signal, GND, PWR, signal) with controlled impedance for \ac{SPI} lines (\SI{50}{\ohm}). Gerber files and KiCad project are in the repository~\cite{vbfc-github}.

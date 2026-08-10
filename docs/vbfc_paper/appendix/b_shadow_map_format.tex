@@ -1,0 +1,104 @@
+%==============================================================================
+% Appendix B: Shadow Map Format
+%==============================================================================
+\section{Shadow Map Data Structure}
+\label{app:shadow_map}
+
+The shadow map is the central data structure that defines how the \ac{PCH}'s linear address space is mapped to physical flash devices. It is stored in two locations for redundancy:
+\begin{enumerate}
+    \item \textbf{Extension Flash:} At fixed offset \texttt{0x00EE0000} (4 KB region, holds up to 256 entries).
+    \item \textbf{24C02 EEPROM:} Full 256-byte map (16 entries $\times$ 16 bytes) for instant boot-time availability.
+\end{enumerate}
+
+\subsection{Shadow Map Header (Extension Flash)}
+\begin{lstlisting}[style=vbfcStyle, caption={Shadow Map Header in Extension Flash}, label={lst:shadow_header}]
+struct shadow_map_header {
+    uint32_t magic;           // 0x53484457 ("SHDW")
+    uint16_t version;         // Format version (1)
+    uint16_t num_entries;     // Number of valid entries (0-256)
+    uint32_t crc32;           // CRC-32 of all entries
+    uint64_t timestamp;       // Unix timestamp of last update
+    uint8_t  reserved[16];    // Future use
+};
+\end{lstlisting}
+
+\subsection{Shadow Map Entry (16 bytes)}
+As defined in \tabref{tab:shadow_map_entry}, each entry maps a contiguous logical address range to a physical source.
+
+\begin{table}[h]
+\centering
+\caption{Region Type Encoding}
+\label{tab:region_type}
+\begin{tabular}{@{}cll@{}}
+\toprule
+\textbf{Value} & \textbf{Name} & \textbf{Behavior} \\
+\midrule
+0x00 & ORIGINAL & Passthrough to motherboard BIOS flash \\
+0x01 & EXTENSION & Read from extension flash at \texttt{physical\_offset} \\
+0x02 & HYBRID   & Read from extension flash + apply patch cache \\
+0x03 & SYNTHESIZED & Generate response in firmware (e.g., JEDEC ID, Status Reg) \\
+0xFF & INVALID  & Entry unused \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Flags Field}
+\begin{itemize}
+    \item Bit 0 (0x01): \texttt{PATCH\_ENABLED} — Patch cache active for this region (HYBRID only).
+    \item Bit 1 (0x02): \texttt{READ\_ONLY} — Write/erase commands blocked for this region.
+    \item Bit 2 (0x04): \texttt{CACHE\_LOCKED} — Patch cache entries for this region pinned.
+    \item Bits 3-7: Reserved (zero).
+\end{itemize}
+
+\subsection{Example Shadow Map Configuration}
+For a typical hidden-menu unlock scenario on a \SI{16}{MB} flash:
+
+\begin{table}[h]
+\centering
+\caption{Example Shadow Map (Hidden Menu Unlock)}
+\label{tab:shadow_example}
+\begin{tabular}{@{}cccccc@{}}
+\toprule
+\textbf{\#} & \textbf{Logical Base} & \textbf{Logical Limit} & \textbf{Phys Offset} & \textbf{Type} & \textbf{Flags} \\
+\midrule
+0 & 0x000000 & 0x0FFFFF & 0x000000 & ORIGINAL & 0x00 \\
+1 & 0x100000 & 0x1FFFFF & 0x010000 & HYBRID   & 0x01 \\
+2 & 0x200000 & 0xFFFFFF & 0x020000 & EXTENSION & 0x00 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{itemize}
+    \item Entry 0: First 1 MB (typically PEI/SEC phase) passthrough to original — critical for Boot Guard IBB.
+    \item Entry 1: 1--2 MB (DXE volume with setup menu code) from extension flash with patching enabled.
+    \item Entry 2: Remaining 14 MB from extension flash (unpatched).
+\end{itemize}
+
+\subsection{Shadow Map Lookup Algorithm}
+\begin{lstlisting}[style=vbfcStyle, caption={Shadow Map Lookup (C)}, label={lst:shadow_lookup}]
+region_type_t shadow_map_lookup(uint32_t logical_addr,
+                                uint32_t *phys_offset_out) {
+    for (int i = 0; i < shadow_map_hdr.num_entries; i++) {
+        entry_t *e = &shadow_map[i];
+        if (logical_addr >= e->logical_base &&
+            logical_addr <= e->logical_limit) {
+            *phys_offset_out = e->physical_offset + 
+                               (logical_addr - e->logical_base);
+            return e->region_type;
+        }
+    }
+    return REGION_INVALID; // Fallback: original flash
+}
+\end{lstlisting}
+
+The linear search is acceptable for $\le$16 entries. For larger maps (future), a binary search on sorted \texttt{logical\_base} or a small radix tree can be used.
+
+\subsection{Atomic Shadow Map Updates}
+To prevent partial updates from corrupting the map, updates use a double-buffered scheme:
+\begin{enumerate}
+    \item Write new map to staging area in extension flash.
+    \item Compute CRC32, verify.
+    \item Write new header with updated \texttt{timestamp} and \texttt{crc32} (single 4 KB sector erase + program).
+    \item Update EEPROM copy via I2C (256 bytes, \SI{\approx 5}{ms}).
+    \item On boot, arbiter loads map from EEPROM (fast) and verifies against flash copy.
+\end{enumerate}

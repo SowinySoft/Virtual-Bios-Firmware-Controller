@@ -1,0 +1,285 @@
+%==============================================================================
+% VBFC: A Programmable SPI Interposer for BIOS Feature Unlocking and 
+% Firmware Security — Full Academic Paper (IEEE/ACM Journal Format)
+%==============================================================================
+\documentclass[10pt,journal,compsoc]{IEEEtran}
+
+%--- Core Packages -------------------------------------------------------------
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{amsmath,amssymb,amsfonts,amsthm}
+\usepackage{mathtools}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{multirow}
+\usepackage{multicol}
+\usepackage{caption}
+\usepackage{subcaption}
+\usepackage{float}
+\usepackage{longtable}
+\usepackage{algorithm}
+\usepackage[noend]{algpseudocode}
+\usepackage{siunitx}
+\usepackage{xspace}
+\usepackage{url}
+\usepackage{hyperref}
+\usepackage{cleveref}
+\usepackage{listings}
+\usepackage{xcolor}
+\usepackage{tikz}
+\usepackage{pgfplots}
+\usepackage{pgfplotstable}
+\usepackage{pgfkeys}
+\usepackage{pgfmath}
+\usepackage{geometry}
+\usepackage{acronym}
+\usepackage{glossaries}
+\usepackage{enumitem}
+\usepackage{balance}
+\usepackage{textcomp}
+\usepackage{microtype}
+
+%--- TikZ Libraries for Architecture Diagrams ----------------------------------
+\usetikzlibrary{
+  shapes.geometric,
+  shapes.arrows,
+  shapes.symbols,
+  positioning,
+  calc,
+  arrows.meta,
+  decorations.pathmorphing,
+  decorations.markings,
+  shadows,
+  fit,
+  backgrounds,
+  chains,
+  scopes,
+  mindmap,
+  spy,
+  intersections,
+  patterns,
+  patterns.meta
+}
+
+%--- PGFPlots Configuration ----------------------------------------------------
+\pgfplotsset{compat=1.18}
+\usepgfplotslibrary{fillbetween}
+
+%--- Page Geometry (Journal Standard) -----------------------------------------
+\geometry{
+  paper=letterpaper,
+  top=19mm,
+  bottom=19mm,
+  left=17.5mm,
+  right=17.5mm,
+  columnsep=6.5mm,
+  headheight=13.6pt,
+  headsep=4.5mm,
+  footskip=8.5mm
+}
+
+%--- Color Palette (Professional Academic) -------------------------------------
+\definecolor{vbfcBlue}{HTML}{1B4F72}
+\definecolor{vbfcDarkBlue}{HTML}{0D2B40}
+\definecolor{vbfcAccent}{HTML}{E86C00}
+\definecolor{vbfcLightGray}{HTML}{F2F2F2}
+\definecolor{vbfcMediumGray}{HTML}{CCCCCC}
+\definecolor{vbfcDarkGray}{HTML}{555555}
+\definecolor{vbfcGreen}{HTML}{27AE60}
+\definecolor{vbfcRed}{HTML}{C0392B}
+\definecolor{vbfcOrange}{HTML}{F39C12}
+
+%--- Listing Style for Code/Config Snippets ------------------------------------
+\lstdefinestyle{vbfcStyle}{
+  basicstyle=\ttfamily\footnotesize,
+  keywordstyle=\color{vbfcBlue}\bfseries,
+  commentstyle=\color{vbfcGreen!70!black}\itshape,
+  stringstyle=\color{vbfcRed},
+  numberstyle=\tiny\color{vbfcMediumGray},
+  numbers=left,
+  numbersep=5pt,
+  frame=single,
+  framesep=3pt,
+  rulecolor=\color{vbfcMediumGray},
+  backgroundcolor=\color{vbfcLightGray},
+  breaklines=true,
+  breakatwhitespace=true,
+  tabsize=2,
+  showspaces=false,
+  showstringspaces=false,
+  columns=flexible,
+  linewidth=\columnwidth,
+  basewidth=0.5em
+}
+
+%--- Hyperref Configuration ----------------------------------------------------
+\hypersetup{
+  colorlinks=true,
+  linkcolor=vbfcDarkBlue,
+  citecolor=vbfcDarkBlue,
+  filecolor=vbfcDarkBlue,
+  urlcolor=vbfcAccent,
+  pdfauthor={SowinySoft},
+  pdfsubject={VBFC: Programmable SPI Interposer for BIOS Security},
+  pdfkeywords={SPI, BIOS, firmware security, interposer, RP2040, hardware root of trust},
+  pdfproducer={LaTeX with hyperref},
+  pdfcreator={pdflatex},
+  bookmarks=true,
+  bookmarksnumbered=true,
+  bookmarksopen=true,
+  bookmarksopenlevel=2,
+  pdfpagemode=UseOutlines,
+  pdfstartview=FitH,
+  pdfborder={0 0 0}
+}
+
+%--- Acronyms ------------------------------------------------------------------
+\acrodef{SPI}[SPI]{Serial Peripheral Interface}
+\acrodef{PCH}[PCH]{Platform Controller Hub}
+\acrodef{UEFI}[UEFI]{Unified Extensible Firmware Interface}
+\acrodef{NVRAM}[NVRAM]{Non-Volatile Random Access Memory}
+\acrodef{HMAC}[HMAC]{Hash-based Message Authentication Code}
+\acrodef{SHA}[SHA]{Secure Hash Algorithm}
+\acrodef{EEPROM}[EEPROM]{Electrically Erasable Programmable Read-Only Memory}
+\acrodef{SRAM}[SRAM]{Static Random Access Memory}
+\acrodef{UF2}[UF2]{USB Flashing Format}
+\acrodef{SDK}[SDK]{Software Development Kit}
+\acrodef{API}[API]{Application Programming Interface}
+\acrodef{CLI}[CLI]{Command Line Interface}
+\acrodef{GPIO}[GPIO]{General Purpose Input/Output}
+\acrodef{PIO}[PIO]{Programmable I/O}
+\acrodef{DMA}[DMA]{Direct Memory Access}
+\acrodef{CRC}[CRC]{Cyclic Redundancy Check}
+\acrodef{JTAG}[JTAG]{Joint Test Action Group}
+\acrodef{SWD}[SWD]{Serial Wire Debug}
+\acrodef{OTP}[OTP]{One-Time Programmable}
+\acrodef{RoT}[RoT]{Root of Trust}
+\acrodef{TCB}[TCB]{Trusted Computing Base}
+\acrodef{ME}[ME]{Management Engine}
+\acrodef{BIOS}[BIOS]{Basic Input/Output System}
+\acrodef{EC}[EC]{Embedded Controller}
+\acrodef{SoC}[SoC]{System on Chip}
+\acrodef{FPGA}[FPGA]{Field-Programmable Gate Array}
+\acrodef{ASIC}[ASIC]{Application-Specific Integrated Circuit}
+\acrodef{PCB}[PCB]{Printed Circuit Board}
+\acrodef{SOIC}[SOIC]{Small Outline Integrated Circuit}
+\acrodef{QSPI}[QSPI]{Quad SPI}
+\acrodef{CS}[CS]{Chip Select}
+\acrodef{SCK}[SCK]{Serial Clock}
+\acrodef{MOSI}[MOSI]{Master Out Slave In}
+\acrodef{MISO}[MISO]{Master In Slave Out}
+\acrodef{ID}[ID]{Identifier}
+\acrodef{RNG}[RNG]{Random Number Generator}
+\acrodef{AES}[AES]{Advanced Encryption Standard}
+\acrodef{RSA}[RSA]{Rivest-Shamir-Adleman}
+\acrodef{ECDSA}[ECDSA]{Elliptic Curve Digital Signature Algorithm}
+\acrodef{EDK}[EDK]{EFI Development Kit}
+\acrodef{PI}[PI]{Platform Initialization}
+\acrodef{PEI}[PEI]{Pre-EFI Initialization}
+\acrodef{DXE}[DXE]{Driver Execution Environment}
+\acrodef{BDS}[BDS]{Boot Device Selection}
+\acrodef{ACPI}[ACPI]{Advanced Configuration and Power Interface}
+\acrodef{SMBIOS}[SMBIOS]{System Management BIOS}
+\acrodef{TPM}[TPM]{Trusted Platform Module}
+\acrodef{PCR}[PCR]{Platform Configuration Register}
+\acrodef{IMA}[IMA]{Integrity Measurement Architecture}
+\acrodef{TXT}[TXT]{Trusted Execution Technology}
+\acrodef{SMM}[SMM]{System Management Mode}
+\acrodef{VFIO}[VFIO]{Virtual Function I/O}
+\acrodef{DMAR}[DMAR]{DMA Remapping}
+\acrodef{IOMMU}[IOMMU]{Input-Output Memory Management Unit}
+
+%--- Glossary ------------------------------------------------------------------
+\newacronym{vbfc}{VBFC}{Virtual BIOS Firmware Controller}
+\newacronym{rp2040}{RP2040}{Raspberry Pi RP2040 Microcontroller}
+\newacronym{w25q128}{W25Q128}{Winbond 16 MB SPI Flash}
+\newacronym{mux}{74LVC1G3157}{Single SPDT Analog Switch}
+
+%--- Custom Commands -----------------------------------------------------------
+\newcommand{\vbfc}{\gls{vbfc}\xspace}
+\newcommand{\rp}{\gls{rp2040}\xspace}
+\newcommand{\wq}{\gls{w25q128}\xspace}
+\newcommand{\mx}{\gls{mux}\xspace}
+\newcommand{\figref}[1]{Figure~\ref{#1}}
+\newcommand{\tabref}[1]{Table~\ref{#1}}
+\newcommand{\secref}[1]{Section~\ref{#1}}
+\newcommand{\eqrefcustom}[1]{Equation~\eqref{#1}}
+\newcommand{\lstref}[1]{Listing~\ref{#1}}
+\newcommand{\algrefcustom}[1]{Algorithm~\ref{#1}}
+\newcommand{\appref}[1]{Appendix~\ref{#1}}
+
+% Math operators
+\DeclareMathOperator{\HMAC}{HMAC}
+\DeclareMathOperator{\SHA}{SHA}
+\DeclareMathOperator{\AES}{AES}
+\DeclareMathOperator{\XOR}{\oplus}
+\DeclarePairedDelimiter{\abs}{\lvert}{\rvert}
+\DeclarePairedDelimiter{\norm}{\lVert}{\rVert}
+
+%--- Theorem Environments ------------------------------------------------------
+\newtheorem{definition}{Definition}
+\newtheorem{theorem}{Theorem}
+\newtheorem{lemma}{Lemma}
+\newtheorem{corollary}{Corollary}
+\newtheorem{proposition}{Proposition}
+\newtheorem{claim}{Claim}
+\newtheorem{observation}{Observation}
+\newtheorem{assumption}{Assumption}
+
+%--- IEEEtran Title / Author Setup --------------------------------------------
+\title{
+  \vbfc: A Programmable \ac{SPI} Interposer for \ac{BIOS} Feature Unlocking and Firmware Security
+}
+
+\author{
+  SowinySoft Research Division%
+  \thanks{Manuscript received July 2026; revised August 2026. This work was supported by the open-source community. Corresponding author: SowinySoft (e-mail: research@sowinysoft.example.com).}%
+  \thanks{The authors are with the Virtual BIOS Firmware Controller Project, GitHub: https://github.com/SowinySoft/Virtual-Bios-Firmware-Controller.}%
+}
+
+\markboth{Journal of Hardware Security,~Vol.~XX, No.~X, 2026}{Author \MakeLowercase{\textit{et al.}}: \vbfc: A Programmable SPI Interposer}
+
+%--- Bibliography Style --------------------------------------------------------
+\usepackage[style=ieee,sorting=none,backend=biber,maxnames=99,doi=false,isbn=false,url=true,eprint=false]{biblatex}
+\addbibresource{vbfc_paper.bib}
+
+%==============================================================================
+% DOCUMENT BEGIN
+%==============================================================================
+\begin{document}
+
+\maketitle
+
+%--- Abstract ------------------------------------------------------------------
+\begin{abstract}
+The \ac{BIOS} firmware constitutes the most privileged software layer in any x86 system, yet consumers, security researchers, and system integrators possess limited means to inspect, modify, or extend it without resorting to expensive dedicated hardware programmers. This paper presents the \acf{vbfc} (\vbfc): an open-source, low-cost \ac{SPI} interposer that sits transparently between a motherboard's chipset (\ac{PCH}) and its \ac{SPI} flash chip, enabling real-time, selective byte substitution of firmware images during boot. Built around the \rp (\SI{264}{KB} \ac{SRAM}, \SI{2}{MB} flash) and a \SI{16}{MB} extension flash (\wq), the \vbfc implements four core capabilities: (1) a cryptographic signing layer based on \ac{HMAC}-\ac{SHA}256 that prevents unauthorized image injection and provides anti-rollback guarantees; (2) an address translation map (shadow map) for transparent region remapping between the original and extension flash; (3) an in-flight byte-patching engine that applies per-byte substitutions in the \ac{SPI} arbiter's hot path with \SI{<1}{\micro s} latency; and (4) a passive \ac{SPI} bus transaction sniffer for forensic analysis and verification. We describe the complete system architecture, the \ac{SPI} arbiter state machine, the signed-image header format, the shadow map data structure, and the host-side provisioning toolchain. Experimental evaluation on physical hardware demonstrates successful patching of \ac{UEFI} firmware volumes, hidden \ac{BIOS} menu unlocking, and \ac{ME} region neutralization, with zero detectable boot-time overhead. The \vbfc hardware design, firmware, and host software are released under the MIT license to foster transparent firmware security research.
+\end{abstract}
+
+\begin{IEEEkeywords}
+\ac{SPI}, \ac{BIOS}, firmware security, interposer, hardware root of trust, \ac{RP2040}, \ac{UEFI}, \ac{ME}, trusted computing, open-source hardware
+\end{IEEEkeywords}
+
+%--- Main Content --------------------------------------------------------------
+\input{sections/01_introduction}
+\input{sections/02_background_related_work}
+\input{sections/03_threat_model}
+\input{sections/04_system_architecture}
+\input{sections/05_spi_arbiter_design}
+\input{sections/06_security_architecture}
+\input{sections/07_implementation}
+\input{sections/08_evaluation}
+\input{sections/09_discussion_future_work}
+\input{sections/10_conclusion}
+
+%--- Bibliography --------------------------------------------------------------
+\printbibliography[heading=bibintoc,title={References}]
+
+%--- Appendices ----------------------------------------------------------------
+\appendix
+\input{appendix/a_signed_image_header}
+\input{appendix/b_shadow_map_format}
+\input{appendix/c_host_toolchain_api}
+\input{appendix/d_hardware_bom_schematics}
+
+\end{document}

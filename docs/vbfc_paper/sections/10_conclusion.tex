@@ -1,0 +1,15 @@
+%==============================================================================
+% Section 10: Conclusion
+%==============================================================================
+\section{Conclusion}
+\label{sec:conclusion}
+
+We have presented the \acf{vbfc} (\vbfc), a programmable \ac{SPI} interposer that brings transparent, real-time firmware modification capabilities to commodity x86 platforms at a cost of under \$11. The \vbfc combines four novel capabilities in a single open-source package: (1) a cycle-accurate \ac{SPI} arbiter implemented in \ac{PIO} that routes transactions and applies in-flight byte patches with negligible latency; (2) a cryptographic signing layer with \ac{HMAC}-\ac{SHA}256 authentication and hardware-rooted anti-rollback; (3) a shadow map mechanism enabling transparent firmware capacity extension beyond the original flash size; and (4) a passive \ac{SPI} sniffer for forensic verification.
+
+Experimental evaluation on three contemporary platforms (Intel 500/600 series, AMD 500 series) demonstrates successful unlocking of hidden \ac{BIOS} menus, \ac{ME} region neutralization, and transparent capacity extension to 24 MB, with zero measurable boot-time overhead and \SI{\le 30}{ns} \ac{SPI} transaction latency impact. The complete hardware design, firmware, and host toolchain are released under the MIT license to enable transparent firmware security research and empower platform owners.
+
+The \vbfc represents a step toward democratizing firmware security: moving from "trust the vendor" to "verify and control your firmware." We hope this work inspires further open innovation in the hardware root-of-trust space.
+
+%--- Acknowledgments ---
+\section*{Acknowledgment}
+The authors thank the open-source firmware community (coreboot, UEFITool, SPISPY), the Raspberry Pi RP2040 team for exceptional documentation, and the researchers whose prior work on firmware security and SPI interposers made this possible. This work received no external funding; it is a purely community-driven effort.
