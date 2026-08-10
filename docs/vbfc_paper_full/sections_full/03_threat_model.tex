@@ -1,0 +1,54 @@
+%==============================================================================
+% Section 3: Threat Model
+%==============================================================================
+\section{Threat Model}
+\label{sec:threat_model}
+
+We formalize the threat model using the standard \textit{attacker--defender} framework. The \vbfc protects the integrity and authenticity of firmware modifications applied via the interposer, not the underlying platform firmware itself.
+
+\subsection{System Assets}
+\begin{enumerate}
+    \item \textbf{Firmware Image Integrity:} The modified firmware image stored in extension flash must not be tampered with after provisioning.
+    \item \textbf{Patching Policy Integrity:} The patch table (address $\to$ byte mapping) must reflect only authorized modifications.
+    \item \textbf{Anti-Rollback State:} The image version counter must increase monotonically; downgrades must be rejected.
+    \item \textbf{Provisioning Key Secrecy:} The \ac{HMAC} key (Phase A) and ECDSA private key (Phase B) must remain confidential.
+    \item \textbf{Operational Transparency:} The \ac{PCH} must observe a consistent, valid \ac{SPI} flash response indistinguishable from a genuine flash chip.
+\end{enumerate}
+
+\subsection{Adversary Capabilities ($\mathcal{A}$)}
+We assume a \acf{DB} adversary with the following capabilities:
+\begin{itemize}
+    \item \textbf{Physical Access to Interposer:} $\mathcal{A}$ can connect to the \vbfc USB-C port, read/write extension flash via \rp bootloader, and probe \ac{SPI} bus lines.
+    \item \textbf{Bus Observation:} $\mathcal{A}$ can passively capture all \ac{SPI} transactions (commands, addresses, data) with a logic analyzer.
+    \item \textbf{Image Injection:} $\mathcal{A}$ can write arbitrary data to the extension flash (e.g., via \rp USB bootloader or \ac{SWD}).
+    \item \textbf{Replay:} $\mathcal{A}$ can capture and replay previous valid firmware images to the extension flash.
+    \item \textbf{Side-Channel:} $\mathcal{A}$ may measure timing, power consumption, or EM emanations of the \rp during operation.
+\end{itemize}
+
+\subsection{Adversary Limitations}
+$\mathcal{A}$ \textbf{cannot}:
+\begin{itemize}
+    \item Extract the provisioning \ac{HMAC} key from the \rp (stored in \ac{OTP} / secure enclave equivalent; see \secref{sec:security}).
+    \item Forge valid \ac{HMAC}-\ac{SHA}256 tags without the key.
+    \item Modify the \rp firmware image stored in internal flash (write-protected after provisioning).
+    \item Compromise the provisioning host (air-gapped, separate trust domain).
+    \item Bypass Intel Boot Guard / AMD PSB if the OEM signing key is required for the \ac{IBB} (Initial Boot Block) — the \vbfc patches \textit{after} \ac{PCH} verification.
+\end{itemize}
+
+\subsection{Security Goals}
+\begin{enumerate}
+    \item \textbf{Authenticity:} Only images signed by the provisioning key are accepted by the \vbfc arbiter.
+    \item \textbf{Integrity:} Any bit-flip in the image or header is detected with probability $1 - 2^{-256}$.
+    \item \textbf{Anti-Rollback:} Images with version $\le$ current version are rejected.
+    \item \textbf{Transparency:} The \ac{PCH} observes correct \ac{SPI} signaling; no timing anomalies detectable by \ac{PCH} firmware.
+    \item \textbf{Non-Bypassability:} The arbiter cannot be disabled or bypassed via \ac{SPI} commands.
+\end{enumerate}
+
+\subsection{Out of Scope}
+\begin{itemize}
+    \item Attacks on the \ac{PCH} microcode, \ac{ME} firmware, or CPU microcode.
+    \item Invasive attacks on the \rp die (decap, FIB, laser fault injection).
+    \item Denial of service (bricking the interposer) — availability is not a primary goal.
+    \item Supply chain attacks on the \vbfc hardware itself (assumed genuine).
+    \item Side-channel key extraction via power/EM analysis (mitigated by constant-time \ac{HMAC} in hardware accelerator; future work).
+\end{itemize}

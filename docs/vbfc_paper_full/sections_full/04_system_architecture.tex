@@ -1,0 +1,185 @@
+%==============================================================================
+% Section 4: System Architecture
+%==============================================================================
+\section{System Architecture}
+\label{sec:architecture}
+
+\begin{figure}[t]
+\centering
+\begin{tikzpicture}[
+    node distance=10mm and 8mm,
+    component/.style={
+        draw, rounded corners=3pt, thick,
+        fill=white, minimum height=18mm, minimum width=35mm,
+        drop shadow={shadow xshift=1pt, shadow yshift=-1pt, opacity=0.15}
+    },
+    storage/.style={
+        draw, rounded corners=3pt, thick,
+        fill=vbfcLightGray, minimum height=18mm, minimum width=30mm,
+        drop shadow={shadow xshift=1pt, shadow yshift=-1pt, opacity=0.15}
+    },
+    interface/.style={
+        draw, diamond, aspect=2, thick,
+        fill=vbfcBlue!10, minimum height=12mm, minimum width=22mm,
+        drop shadow={shadow xshift=1pt, shadow yshift=-1pt, opacity=0.15}
+    },
+    arrow/.style={-Stealth, thick, draw=vbfcDarkBlue},
+    dasharrow/.style={-Stealth, thick, draw=vbfcAccent, dashed},
+    labelstyle/.style={font=\footnotesize, text=vbfcDarkGray},
+    header/.style={font=\small\bfseries, text=vbfcDarkBlue}
+]
+
+% Motherboard Side
+\node[component] (pch) {
+    \begin{tabular}{c}
+        \textbf{Motherboard} \\
+        \textit{Platform Controller Hub (PCH)} \\
+        \ac{SPI} Master
+    \end{tabular}
+};
+
+% VBFC Interposer
+\node[component, right=of pch] (vbfc) {
+    \begin{tabular}{c}
+        \textbf{VBFC Interposer} \\
+        \textit{RP2040 + 74LVC1G3157 Mux}
+    \end{tabular}
+};
+
+% Original SPI Flash
+\node[storage, below=of pch] (orig_flash) {
+    \begin{tabular}{c}
+        \textbf{Original BIOS Flash} \\
+        \textit{SOIC-8, 8--32 MB} \\
+        (Unmodified)
+    \end{tabular}
+};
+
+% Extension Flash
+\node[storage, below=of vbfc] (ext_flash) {
+    \begin{tabular}{c}
+        \textbf{Extension Flash (W25Q128)} \\
+        \textit{16 MB, Signed Images} \\
+        + Shadow Map + Patch Table
+    \end{tabular}
+};
+
+% EEPROM
+\node[storage, right=of ext_flash] (eeprom) {
+    \begin{tabular}{c}
+        \textbf{24C02 EEPROM} \\
+        \textit{256 B Shadow Map} \\
+        (Backup)
+    \end{tabular}
+};
+
+% Host Interface
+\node[interface, above=of vbfc] (usb) {
+    \begin{tabular}{c}
+        \textbf{USB-C} \\
+        \textit{Host Provisioning} \\
+        \texttt{vbfc-host CLI}
+    \end{tabular}
+};
+
+% SPI Bus connections
+\draw[arrow] (pch.east) -- node[above, labelstyle] {SPI Bus (CS\#, SCK, MOSI, MISO)} (vbfc.west);
+
+\draw[arrow] (vbfc.south west) -- node[left, labelstyle, pos=0.3] {\begin{tabular}{c}Pass-through\\(Original Flash)\end{tabular}} (orig_flash.north west);
+\draw[arrow] (vbfc.south east) -- node[right, labelstyle, pos=0.3] {\begin{tabular}{c}Extension Access\end{tabular}} (ext_flash.north east);
+
+\draw[dasharrow] (vbfc.north) -- node[left, labelstyle] {\begin{tabular}{c}USB 2.0 FS\end{tabular}} (usb.south);
+
+\draw[arrow] (ext_flash.east) -- node[above, labelstyle] {\begin{tabular}{c}I2C (Backup)\end{tabular}} (eeprom.west);
+
+% Internal VBFC components (inset)
+\begin{scope}[shift={(vbfc.center)}, scale=0.75]
+    \node[draw, rounded corners=2pt, fill=vbfcBlue!5, minimum width=35mm, minimum height=22mm, label={[header]above:\textit{RP2040 Internals}}] (rp_box) {};
+    
+    \node[draw, rounded corners=2pt, fill=white, minimum width=16mm, minimum height=10mm, 
+          label={[labelstyle]above:\begin{tabular}{c}SPI Arbiter\\PIO SM\end{tabular}}] (arbiter) at (-12mm, 4mm) {};
+    \node[draw, rounded corners=2pt, fill=white, minimum width=16mm, minimum height=10mm, 
+          label={[labelstyle]above:\begin{tabular}{c}Patch Engine\\(Cache + Table)\end{tabular}}] (patch) at (12mm, 4mm) {};
+    \node[draw, rounded corners=2pt, fill=white, minimum width=16mm, minimum height=10mm, 
+          label={[labelstyle]above:\begin{tabular}{c}Crypto Engine\\(HMAC-SHA256 HW)\end{tabular}}] (crypto) at (-12mm, -8mm) {};
+    \node[draw, rounded corners=2pt, fill=white, minimum width=16mm, minimum height=10mm, 
+          label={[labelstyle]above:\begin{tabular}{c}Shadow Map\\(Resolver)\end{tabular}}] (shadow) at (12mm, -8mm) {};
+    \node[draw, rounded corners=2pt, fill=white, minimum width=16mm, minimum height=10mm, 
+          label={[labelstyle]above:\begin{tabular}{c}SPI Sniffer\\(Logger)\end{tabular}}] (sniffer) at (0mm, -14mm) {};
+    
+    \draw[arrow, draw=vbfcMediumGray] (arbiter.east) -- (patch.west);
+    \draw[arrow, draw=vbfcMediumGray] (patch.south) -- (shadow.north);
+    \draw[arrow, draw=vbfcMediumGray] (arbiter.south) -- (crypto.north);
+    \draw[arrow, draw=vbfcMediumGray, dashed] (arbiter.south) -- (sniffer.north);
+\end{scope}
+
+% Legend
+\node[draw, rounded corners=3pt, fill=vbfcLightGray, below=22mm of vbfc, font=\footnotesize, anchor=north] {
+    \textbf{Legend:} 
+    \begin{tabular}{@{}cl@{}}
+        \tikz\draw[arrow] (0,0) -- (5mm,0); & Solid = SPI / Data Path \\
+        \tikz\draw[dasharrow] (0,0) -- (5mm,0); & Dashed = USB / Control Path
+    \end{tabular}
+};
+
+\end{tikzpicture}
+\caption{VBFC System Architecture. The interposer sits transparently between the PCH (SPI master) and the original BIOS flash. The RP2040 arbitrates all SPI transactions, routing reads to either the original flash or the authenticated extension flash based on the shadow map, while applying hot-patches from a cached patch table. A passive sniffer logs all transactions for forensic verification. Provisioning occurs via USB-C using the \texttt{vbfc-host} toolchain.}
+\label{fig:system_architecture}
+\end{figure}
+
+The \vbfc architecture (Fig.~\ref{fig:system_architecture}) comprises four physical components:
+\begin{enumerate}
+    \item \textbf{\rp Microcontroller:} Dual-core Cortex-M0+ @ \SI{133}{MHz}, \SI{264}{KB} \ac{SRAM}, \SI{2}{MB} internal flash. Runs the arbiter firmware, crypto engine, and USB stack.
+    \item \textbf{\wq Extension Flash:} \SI{16}{MB} (\SI{128}{Mbit}) SPI NOR flash. Stores signed firmware images, shadow map, and patch tables. Connected to \rp \ac{QSPI} interface (XIP capable).
+    \item \textbf{\mx Analog Switch:} Single SPDT switch routing the \ac{MISO} line between original flash and \rp based on \ac{CS}\# state and address decode. Propagation delay \SI{<2}{ns}.
+    \item \textbf{24C02 EEPROM:} \SI{256}{B} I2C \ac{EEPROM} storing a backup copy of the shadow map for fast boot-time recovery.
+\end{enumerate}
+
+\subsection{Physical Interposer Design}
+The interposer \ac{PCB} uses a SOIC-8 clip or socket adapter to intercept the \ac{SPI} bus without soldering. Signal routing:
+\begin{itemize}
+    \item \texttt{CS\#}, \texttt{SCK}, \texttt{MOSI}: Pass-through from \ac{PCH} to both original flash and \rp \ac{PIO} inputs.
+    \item \texttt{MISO}: \ac{PCH} $\to$ \mx input A; Original Flash \texttt{MISO} $\to$ \mx input B; \rp \texttt{MISO\_OUT} $\to$ \mx select-controlled output $\to$ \ac{PCH} \texttt{MISO}.
+    \item \texttt{WP\#}, \texttt{HOLD\#}: Pulled high on \ac{PCH} side; \rp controls independently for extension flash.
+\end{itemize}
+The \rp \ac{PIO} state machines monitor \texttt{CS\#} and \texttt{SCK} to synchronize with \ac{PCH} transactions in real time.
+
+\subsection{Shadow Map: Transparent Region Remapping}
+The shadow map (\appref{app:shadow_map}) is the central data structure enabling transparent firmware extension. It partitions the \ac{PCH}'s linear address space (\SI{0}{MB}--\SI{32}{MB}) into contiguous regions, each mapped to either:
+\begin{itemize}
+    \item \textbf{ORIGINAL:} Pass-through to the motherboard's BIOS flash (unmodified).
+    \item \textbf{EXTENSION:} Served from the \wq at a specified offset, with optional per-byte patching.
+    \item \textbf{HYBRID:} Base data from extension flash + patch table overrides.
+\end{itemize}
+
+\begin{table}[t]
+\centering
+\caption{Shadow Map Entry Format (16 bytes/entry, max 16 entries = 256 B)}
+\label{tab:shadow_map_entry}
+\begin{tabular}{@{}clll@{}}
+\toprule
+\textbf{Offset} & \textbf{Size} & \textbf{Field} & \textbf{Description} \\
+\midrule
+0x00 & 4 B & \texttt{logical\_base} & PCH address range start (4 KiB aligned) \\
+0x04 & 4 B & \texttt{logical\_limit} & PCH address range end (inclusive) \\
+0x08 & 4 B & \texttt{physical\_offset} & Offset in extension flash (EXT regions) or 0 \\
+0x0C & 1 B & \texttt{region\_type} & 0=ORIGINAL, 1=EXTENSION, 2=HYBRID \\
+0x0D & 1 B & \texttt{flags} & Bit 0: patching enabled; Bit 1: read-only \\
+0x0E & 2 B & \texttt{crc16} & CRC-16-CCITT of entry (integrity) \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The \ac{PCH} issues read commands with 24-bit addresses (3-byte address mode). The arbiter performs a linear search of the shadow map (max 16 entries, fits in L1 cache) to determine the target region. For EXTENSION/HYBRID regions, the physical address is computed as:
+\begin{equation}
+\texttt{phys\_addr} = \texttt{physical\_offset} + (\texttt{logical\_addr} - \texttt{logical\_base})
+\label{eq:addr_translation}
+\end{equation}
+
+\subsection{Operational Modes}
+\begin{enumerate}
+    \item \textbf{Normal (Arbiter Active):} All \ac{SPI} transactions processed by \ac{PIO} state machines. Reads routed per shadow map; patches applied; sniffer logging active.
+    \item \textbf{Bypass (Jumper/JTAG):} \mx forced to route original flash \texttt{MISO} directly to \ac{PCH}. \rp holds \texttt{MISO\_OUT} in Hi-Z. Used for recovery or stock boot.
+    \item \textbf{Provisioning (USB-C):} \rp enters USB bootloader / \texttt{vbfc-host} mode. \ac{SPI} arbiter disabled. Host can read/write extension flash, update shadow map, sign images, inject patches.
+    \item \textbf{Forensic (Sniffer Only):} Arbiter in pass-through mode; sniffer captures full transaction trace to ring buffer / USB.
+\end{enumerate}
