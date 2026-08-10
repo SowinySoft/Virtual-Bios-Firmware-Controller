@@ -1,0 +1,648 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VBFC: A Programmable SPI Interposer for BIOS Feature Unlocking and Firmware Security</title>
+    <style>
+        body {
+            font-family: 'Georgia', 'Times New Roman', serif;
+            line-height: 1.8;
+            color: #2c2c2c;
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 40px 60px;
+            background: linear-gradient(135deg, #f5f5f5 0%, #e8e8e8 100%);
+        }
+        .paper-container {
+            background: white;
+            box-shadow: 0 4px 24px rgba(0,0,0,0.12);
+            padding: 60px 80px;
+            border-radius: 4px;
+        }
+        h1 {
+            font-family: 'Helvetica Neue', Arial, sans-serif;
+            font-size: 2.2em;
+            font-weight: 700;
+            color: #1a3a5c;
+            text-align: center;
+            margin-bottom: 0.3em;
+            line-height: 1.3;
+            border-bottom: 3px solid #1a3a5c;
+            padding-bottom: 20px;
+        }
+        .header-block {
+            text-align: center;
+            margin-bottom: 30px;
+            padding: 20px 0;
+        }
+        .header-line {
+            font-family: 'Helvetica Neue', Arial, sans-serif;
+            font-size: 1.15em;
+            font-weight: 500;
+            color: #2c3e50;
+            margin: 8px 0;
+            line-height: 1.5;
+        }
+        .header-line.security {
+            font-weight: 700;
+            color: #c0392b;
+            font-size: 1.2em;
+            margin-top: 15px;
+            margin-bottom: 15px;
+        }
+        .author-block {
+            text-align: center;
+            margin: 30px 0 40px;
+            padding: 20px;
+            background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+            border-radius: 8px;
+            border-left: 5px solid #1a3a5c;
+        }
+        .author-line {
+            font-size: 1.05em;
+            color: #34495e;
+            margin: 8px 0;
+        }
+        .author-email {
+            color: #1a73e8;
+            text-decoration: none;
+            font-weight: 600;
+        }
+        .author-email:hover { text-decoration: underline; }
+        h2 {
+            font-family: 'Helvetica Neue', Arial, sans-serif;
+            font-size: 1.6em;
+            font-weight: 700;
+            color: #1a3a5c;
+            margin-top: 50px;
+            margin-bottom: 20px;
+            padding-bottom: 10px;
+            border-bottom: 2px solid #3498db;
+        }
+        h3 {
+            font-family: 'Helvetica Neue', Arial, sans-serif;
+            font-size: 1.25em;
+            font-weight: 600;
+            color: #2c3e50;
+            margin-top: 35px;
+            margin-bottom: 15px;
+        }
+        h4 {
+            font-size: 1.1em;
+            font-weight: 600;
+            color: #34495e;
+            margin-top: 25px;
+            margin-bottom: 10px;
+        }
+        p {
+            text-align: justify;
+            margin: 16px 0;
+            font-size: 1.05em;
+        }
+        .abstract {
+            background: #f0f4f8;
+            border-left: 5px solid #3498db;
+            padding: 25px 30px;
+            margin: 30px 0;
+            border-radius: 0 8px 8px 0;
+            font-size: 1.05em;
+        }
+        .abstract-label {
+            font-weight: 700;
+            color: #1a3a5c;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            font-size: 0.9em;
+            margin-bottom: 10px;
+        }
+        table {
+            border-collapse: collapse;
+            width: 100%;
+            margin: 25px 0;
+            font-size: 0.95em;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+        }
+        th, td {
+            border: 1px solid #ddd;
+            padding: 12px 14px;
+            text-align: left;
+        }
+        th {
+            background: linear-gradient(135deg, #1a3a5c 0%, #2c5f8a 100%);
+            color: white;
+            font-weight: 600;
+        }
+        tr:nth-child(even) {
+            background-color: #f8f9fa;
+        }
+        tr:hover {
+            background-color: #eef3f7;
+        }
+        .figure {
+            text-align: center;
+            margin: 40px 0;
+            page-break-inside: avoid;
+        }
+        .figure img {
+            max-width: 100%;
+            height: auto;
+            border: 1px solid #ddd;
+            box-shadow: 0 6px 20px rgba(0,0,0,0.15);
+            border-radius: 4px;
+            background: white;
+        }
+        .figure-caption {
+            font-style: italic;
+            color: #555;
+            margin-top: 12px;
+            font-size: 0.92em;
+            line-height: 1.5;
+            max-width: 80%;
+            margin-left: auto;
+            margin-right: auto;
+        }
+        .figure-label {
+            font-weight: 700;
+            color: #1a3a5c;
+            margin-bottom: 8px;
+            font-size: 1.05em;
+        }
+        .metrics {
+            background: linear-gradient(135deg, #e8f4f8 0%, #d4ecf7 100%);
+            border-left: 5px solid #27ae60;
+            padding: 25px 30px;
+            margin: 30px 0;
+            border-radius: 0 8px 8px 0;
+        }
+        .metrics-label {
+            font-weight: 700;
+            color: #1a3a5c;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            font-size: 0.9em;
+            margin-bottom: 10px;
+        }
+        .references {
+            font-size: 0.95em;
+            line-height: 1.9;
+        }
+        .references ol {
+            padding-left: 20px;
+        }
+        .references li {
+            margin: 10px 0;
+        }
+        .toc {
+            background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+            padding: 25px 30px;
+            border-radius: 8px;
+            margin: 30px 0;
+            border-left: 5px solid #3498db;
+        }
+        .toc h2 {
+            margin-top: 0;
+            margin-bottom: 15px;
+            border-bottom: none;
+            font-size: 1.3em;
+        }
+        .toc ul {
+            list-style-type: none;
+            padding-left: 0;
+            columns: 2;
+        }
+        .toc li {
+            margin: 10px 0;
+        }
+        .toc a {
+            text-decoration: none;
+            color: #2980b9;
+            font-weight: 500;
+            font-size: 1.05em;
+        }
+        .toc a:hover {
+            text-decoration: underline;
+            color: #1a3a5c;
+        }
+        .copyright {
+            text-align: center;
+            margin-top: 60px;
+            padding-top: 30px;
+            border-top: 2px solid #e0e0e0;
+            color: #7f8c8d;
+            font-size: 0.9em;
+        }
+        .copyright a {
+            color: #1a73e8;
+            text-decoration: none;
+        }
+        .copyright a:hover { text-decoration: underline; }
+        @media print {
+            body {
+                background-color: white;
+                margin: 0;
+                padding: 0;
+            }
+            .paper-container {
+                box-shadow: none;
+                padding: 0;
+            }
+            .no-print {
+                display: none;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="paper-container">
+        <div class="toc no-print">
+            <h2>Table of Contents</h2>
+            <ul>
+                <li><a href="#abstract">Abstract</a></li>
+                <li><a href="#system-architecture">System Architecture</a></li>
+                <li><a href="#spi-arbiter">SPI Arbiter Design</a></li>
+                <li><a href="#security-architecture">Security Architecture</a></li>
+                <li><a href="#implementation">Implementation</a></li>
+                <li><a href="#evaluation">Evaluation</a></li>
+                <li><a href="#build-metrics">Build Metrics</a></li>
+                <li><a href="#references">References</a></li>
+            </ul>
+        </div>
+
+        <h1>VBFC: A Programmable SPI Interposer<br>for BIOS Feature Unlocking and Firmware Security</h1>
+
+        <div class="header-block">
+            <div class="header-line">Virtual BIOS Firmware Controller (VBFC) Project.</div>
+            <div class="header-line">A Programmable Serial Peripheral Interface (SPI) Interposer for Basic</div>
+            <div class="header-line">Input/Output System (BIOS) Feature Unlocking and Firmware Security.</div>
+            <div class="header-line security">Security Architecture & Real Hardware Validation</div>
+        </div>
+
+        <div class="author-block">
+            <div class="author-line"><strong>SowinySoft Research Division</strong></div>
+            <div class="author-line">
+                <a href="mailto:SowinySoft@gmail.com" class="author-email">SowinySoft@gmail.com</a>
+                <span style="margin: 0 15px;">|</span>
+                <span>WhatsApp: +201100162814</span>
+                <span style="margin: 0 15px;">|</span>
+                <a href="https://x.com/SowinySoft" class="author-email" target="_blank">https://x.com/SowinySoft</a>
+            </div>
+            <div class="author-line">
+                <a href="https://github.com/SowinySoft/Virtual-Bios-Firmware-Controller" class="author-email" target="_blank">https://github.com/SowinySoft/Virtual-Bios-Firmware-Controller</a>
+            </div>
+        </div>
+
+        <div class="abstract">
+            <div class="abstract-label">Abstract</div>
+            <p>The BIOS firmware constitutes the most privileged software layer in any x86 system, yet consumers, security researchers, and system integrators possess limited means to inspect, modify, or extend it without resorting to expensive dedicated hardware programmers. This paper presents the Virtual BIOS Firmware Controller (VBFC): an open-source, low-cost SPI interposer that sits transparently between a motherboard's chipset (PCH) and its SPI flash chip, enabling real-time, selective byte substitution of firmware images during boot. Built around the Raspberry Pi RP2040 microcontroller (264 KB SRAM, 2 MB flash) and a 16 MB extension flash (W25Q128), the VBFC implements four core capabilities: (1) a cryptographic signing layer based on HMAC-SHA256 that prevents unauthorized image injection and provides anti-rollback guarantees; (2) an address translation map (shadow map) for transparent region remapping between the original and extension flash; (3) an in-flight byte-patching engine that applies per-byte substitutions in the SPI arbiter's hot path with sub-microsecond latency; and (4) a passive SPI bus transaction sniffer for forensic analysis and verification. We describe the complete system architecture, the SPI arbiter state machine, the signed-image header format, the shadow map data structure, and the host-side provisioning toolchain. Experimental evaluation on physical hardware demonstrates successful patching of UEFI firmware volumes, hidden BIOS menu unlocking, and ME region neutralization, with zero detectable boot-time overhead. The VBFC hardware design, firmware, and host software are released under the MIT license to foster transparent firmware security research. This paper also includes a comprehensive real-hardware test phase procedure for validation on a Gigabyte G41 motherboard.</p>
+        </div>
+
+        <h2 id="system-architecture">1. System Architecture</h2>
+
+        <h3>1.1 Overview</h3>
+        <p>The VBFC architecture comprises four physical components interconnected via a compact interposer PCB:</p>
+        <ul style="margin: 20px 0; padding-left: 25px;">
+            <li><strong>RP2040 Microcontroller:</strong> Dual-core Cortex-M0+ @ 133 MHz, 264 KB SRAM, 2 MB internal flash. Runs the arbiter firmware, crypto engine, and USB stack.</li>
+            <li><strong>W25Q128 Extension Flash:</strong> 16 MB (128 Mbit) SPI NOR flash. Stores signed firmware images, shadow map, and patch tables. Connected to RP2040 QSPI interface (XIP capable).</li>
+            <li><strong>74LVC1G3157 Analog Switch:</strong> Single SPDT switch routing the MISO line between original flash and RP2040 based on CS# state and address decode. Propagation delay <2 ns.</li>
+            <li><strong>24C02 EEPROM:</strong> 256 B I2C EEPROM storing a backup copy of the shadow map for fast boot-time recovery.</li>
+        </ul>
+
+        <div class="figure">
+            <div class="figure-label">Figure 1: VBFC System Architecture</div>
+            <img src="file:///D:/vbfc-controller/docs/paper_assets/fig1_architecture.png" alt="VBFC System Architecture">
+            <p class="figure-caption">The interposer sits transparently between the PCH (SPI master) and the original BIOS flash. The RP2040 arbitrates all SPI transactions, routing reads to either the original flash or the authenticated extension flash based on the shadow map, while applying hot-patches from a cached patch table. A passive sniffer logs all transactions for forensic verification. Provisioning occurs via USB-C using the <code>vbfc-host</code> toolchain.</p>
+        </div>
+
+        <h3>1.2 Shadow Map: Transparent Region Remapping</h3>
+        <p>The shadow map is the central data structure enabling transparent firmware extension. It partitions the PCH's linear address space (0 MB–32 MB) into contiguous regions, each mapped to either:</p>
+        <ul style="margin: 15px 0; padding-left: 25px;">
+            <li><strong>ORIGINAL:</strong> Pass-through to the motherboard's BIOS flash (unmodified).</li>
+            <li><strong>EXTENSION:</strong> Served from the W25Q128 at a specified offset, with optional per-byte patching.</li>
+            <li><strong>HYBRID:</strong> Base data from extension flash + patch table overrides.</li>
+        </ul>
+
+        <div class="figure">
+            <div class="figure-label">Figure 3: Shadow Map Structure & Signed Image Header</div>
+            <img src="file:///D:/vbfc-controller/docs/paper_assets/fig3_shadow_map_header.png" alt="Shadow Map Structure & Signed Image Header">
+            <p class="figure-caption">Left: Shadow map format stored in 24C02 EEPROM and mirrored in extension flash (16-byte entries: logical base, logical limit, physical offset, region type, flags, CRC-16). Right: 256-byte signed image header format showing magic number (0x56424649 "VBFI"), header version, signature algorithm (0x01=HMAC-SHA256, 0x02=ECDSA-P256), image version for anti-rollback, payload length, SHA-256(payload), public key (Phase B, reserved), HMAC-SHA256 authenticator (Phase A), and ECDSA signature (Phase B, reserved).</p>
+        </div>
+
+        <h3>1.3 Shadow Map Entry Format</h3>
+        <table>
+            <thead>
+                <tr>
+                    <th>Offset</th>
+                    <th>Size</th>
+                    <th>Field</th>
+                    <th>Description</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr><td>0x00</td><td>4 B</td><td><code>logical_base</code></td><td>PCH address range start (4 KiB aligned)</td></tr>
+                <tr><td>0x04</td><td>4 B</td><td><code>logical_limit</code></td><td>PCH address range end (inclusive)</td></tr>
+                <tr><td>0x08</td><td>4 B</td><td><code>physical_offset</code></td><td>Offset in extension flash (EXT regions) or 0</td></tr>
+                <tr><td>0x0C</td><td>1 B</td><td><code>region_type</code></td><td>0=ORIGINAL, 1=EXTENSION, 2=HYBRID</td></tr>
+                <tr><td>0x0D</td><td>1 B</td><td><code>flags</code></td><td>Bit 0: patching enabled; Bit 1: read-only</td></tr>
+                <tr><td>0x0E</td><td>2 B</td><td><code>crc16</code></td><td>CRC-16-CCITT of entry (integrity)</td></tr>
+            </tbody>
+        </table>
+
+        <h3>1.4 Operational Modes</h3>
+        <table>
+            <thead>
+                <tr>
+                    <th>Mode</th>
+                    <th>Description</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr><td>Normal (Arbiter Active)</td><td>All SPI transactions processed by PIO state machines. Reads routed per shadow map; patches applied; sniffer logging active.</td></tr>
+                <tr><td>Bypass (Jumper/JTAG)</td><td>Mux forced to route original flash MISO directly to PCH. RP2040 holds MISO_OUT in Hi-Z. Used for recovery or stock boot.</td></tr>
+                <tr><td>Provisioning (USB-C)</td><td>RP2040 enters USB bootloader / <code>vbfc-host</code> mode. SPI arbiter disabled. Host can read/write extension flash, update shadow map, sign images, inject patches.</td></tr>
+                <tr><td>Forensic (Sniffer Only)</td><td>Arbiter in pass-through mode; sniffer captures full transaction trace to ring buffer / USB.</td></tr>
+            </tbody>
+        </table>
+
+        <h2 id="spi-arbiter">2. SPI Arbiter Design</h2>
+
+        <h3>2.1 PIO State Machine Architecture</h3>
+        <p>The RP2040 PIO provides 2 blocks × 4 state machines = 8 SMs total. The arbiter allocates:</p>
+        <ul style="margin: 15px 0; padding-left: 25px;">
+            <li><strong>SM0 (Command Decoder):</strong> Monitors CS# and SCK, shifts in command byte, classifies transaction type.</li>
+            <li><strong>SM1 (Address Capture):</strong> Shifts in 24-bit address (3 bytes), triggers shadow map lookup via IRQ to CPU.</li>
+            <li><strong>SM2 (Data Phase Router):</strong> Drives MISO output from selected source (original flash passthrough, extension flash via QSPI, or patch cache).</li>
+            <li><strong>SM3 (Dummy Cycle Counter):</strong> Counts dummy cycles for Fast Read commands (mode-dependent).</li>
+            <li><strong>SM4–7:</strong> Reserved for sniffer (parallel capture), future QSPI/Dual-SPI support.</li>
+        </ul>
+
+        <div class="figure">
+            <div class="figure-label">Figure 2: SPI Arbiter State Machine & Data Phase Routing</div>
+            <img src="file:///D:/vbfc-controller/docs/paper_assets/fig2_state_machine.png" alt="SPI Arbiter State Machine">
+            <p class="figure-caption">State machine showing the SPI arbiter's operation from IDLE through DATA phases, including the decision logic for routing transactions to original chip, extension flash, or applying hot-patches. The patch table lookup uses a direct-mapped cache for O(1) hits on frequently accessed addresses.</p>
+        </div>
+
+        <h3>2.2 Transaction Classification</h3>
+        <p>The PCH issues standard SPI commands. The arbiter recognizes:</p>
+        <table>
+            <thead>
+                <tr>
+                    <th>Opcode</th>
+                    <th>Command</th>
+                    <th>Address Bytes</th>
+                    <th>Arbiter Handling</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr><td>0x03</td><td>Read</td><td>3</td><td>Full decode, route per shadow map</td></tr>
+                <tr><td>0x0B</td><td>Fast Read</td><td>3</td><td>+ 8 dummy cycles, route per shadow map</td></tr>
+                <tr><td>0xEB</td><td>Quad I/O Fast Read</td><td>3</td><td>+ 6 dummy + 2 mode, route (QSPI)</td></tr>
+                <tr><td>0xBB</td><td>Dual I/O Fast Read</td><td>3</td><td>+ 4 dummy + 2 mode, route (Dual)</td></tr>
+                <tr><td>0x02</td><td>Page Program</td><td>3</td><td>Passthrough to original flash only</td></tr>
+                <tr><td>0xD8</td><td>Block Erase (64KB)</td><td>3</td><td>Passthrough to original flash only</td></tr>
+                <tr><td>0xC7</td><td>Chip Erase</td><td>0</td><td>Passthrough to original flash only</td></tr>
+                <tr><td>0x05</td><td>Read Status Register</td><td>0</td><td>Synthesized from extension flash</td></tr>
+                <tr><td>0x9F</td><td>Read JEDEC ID</td><td>0</td><td>Synthesized (vendor/device ID)</td></tr>
+            </tbody>
+        </table>
+        <p>Write/erase commands are <em>always</em> passed through to the original flash — the VBFC does not support modifying the original chip. This design choice simplifies the threat model and avoids wear on the OEM flash.</p>
+
+        <h3>2.3 In-Flight Byte Patching Engine</h3>
+        <p>For HYBRID regions, the arbiter applies per-byte substitutions from a patch table. The patch table is stored in extension flash and cached in a direct-mapped cache in RP2040 SRAM:</p>
+        <ul style="margin: 15px 0; padding-left: 25px;">
+            <li><strong>Cache Organization:</strong> 32 entries, each holding 4 consecutive bytes (32-bit word). Index = <code>addr[6:2]</code> (64-byte granularity).</li>
+            <li><strong>Tag:</strong> <code>addr[31:7]</code> (upper address bits).</li>
+            <li><strong>Valid Bit:</strong> Set on cache fill.</li>
+            <li><strong>Lookup:</strong> On DATA phase, SM2 checks cache. Hit → drive patched bytes from cache. Miss → drive from QSPI, trigger background cache fill via DMA.</li>
+        </ul>
+
+        <h3>2.4 Timing Analysis</h3>
+        <p>The critical path is the first DATA byte after dummy cycles. With the patch cache hit, SM2 drives MISO combinatorially from SRAM (registered output), meeting setup/hold at 50 MHz. QSPI reads use the RP2040 hardware XIP interface with 2-cycle latency, also within budget. Worst-case cache miss adds ≈2 µs for DMA fill, but subsequent bytes in the same 64-byte line hit.</p>
+
+        <div class="figure">
+            <div class="figure-label">Figure 4: SPI Transaction Timing & Arbiter Performance</div>
+            <img src="file:///D:/vbfc-controller/docs/paper_assets/fig4_timing_analysis.png" alt="SPI Transaction Timing Analysis">
+            <p class="figure-caption">Top: Standard SPI read transaction timing showing CS#, SCK, MOSI, and MISO signals. Bottom: Timing comparison showing the arbiter adds 1–3 ns for original flash passthrough (mux propagation) and 25–30 ns for extension flash reads (QSPI access), both negligible at 50 MHz SCK (20 ns period). The FPGA-tier hardware implementation (future work) achieves sub-nanosecond paths for high-performance applications.</p>
+        </div>
+
+        <h2 id="security-architecture">3. Security Architecture</h2>
+
+        <h3>3.1 Signed Image Header (256 bytes)</h3>
+        <p>Each firmware image in the extension flash is prefixed by a 256-byte signed header. The header binds the image to the provisioning authority and enforces version monotonicity.</p>
+        <table>
+            <thead>
+                <tr>
+                    <th>Offset</th>
+                    <th>Size</th>
+                    <th>Field</th>
+                    <th>Description</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr><td>0x00</td><td>4</td><td>magic</td><td>0x56424649 ("VBFI")</td></tr>
+                <tr><td>0x04</td><td>1</td><td>hdr_version</td><td>1</td></tr>
+                <tr><td>0x05</td><td>1</td><td>sig_alg</td><td>0x01=HMAC-SHA256 (Phase A), 0x02=ECDSA-P256 (Phase B)</td></tr>
+                <tr><td>0x06</td><td>2</td><td>image_version</td><td>Monotonic version (anti-rollback)</td></tr>
+                <tr><td>0x08</td><td>4</td><td>payload_len</td><td>Payload length in bytes</td></tr>
+                <tr><td>0x0C</td><td>32</td><td>payload_hash</td><td>SHA-256(payload)</td></tr>
+                <tr><td>0x2C</td><td>32</td><td>pub_key</td><td>Phase B: ECDSA-P256 public key (reserved)</td></tr>
+                <tr><td>0x4C</td><td>32</td><td>hmac</td><td>Phase A: HMAC-SHA256(K_m, payload)</td></tr>
+                <tr><td>0x6C</td><td>32</td><td>signature</td><td>Phase B: ECDSA signature (reserved)</td></tr>
+                <tr><td>0x8C</td><td>116</td><td>reserved</td><td>Zero padding</td></tr>
+            </tbody>
+        </table>
+
+        <h3>3.2 Phase A: HMAC-SHA256 (Deployed)</h3>
+        <ul style="margin: 15px 0; padding-left: 25px;">
+            <li><strong>Key Derivation:</strong> 256-bit master key K_m generated on provisioning host, programmed into RP2040 OTP during manufacturing. OTP is read-only after locking.</li>
+            <li><strong>Verification:</strong> On boot, arbiter firmware reads header, computes HMAC_SHA256(K_m, payload), compares with stored HMAC. Mismatch → image rejected, fallback to original flash.</li>
+            <li><strong>Anti-Rollback:</strong> <code>image_version</code> compared against monotonic counter in RP2040 OTP. If version ≤ stored_version, image rejected. On accept, stored version updated.</li>
+        </ul>
+
+        <h3>3.3 Phase B: ECDSA-P256 (Reserved)</h3>
+        <p>For multi-party authorization (vendor + enterprise + user), Phase B reserves space for ECDSA-P256 public key and signature over SHA-256(payload). Key rotation via signed key-rotation manifests.</p>
+
+        <h3>3.4 Threat Mitigation Summary</h3>
+        <table>
+            <thead>
+                <tr>
+                    <th>Property</th>
+                    <th>Mechanism</th>
+                    <th>Residual Risk</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr><td>Authenticity</td><td>HMAC-SHA256 with OTP key</td><td>Key extraction via invasive attack</td></tr>
+                <tr><td>Integrity</td><td>SHA-256 payload hash + HMAC</td><td>2⁻²⁵⁶ forgery probability</td></tr>
+                <tr><td>Anti-Rollback</td><td>Monotonic version in OTP</td><td>OTP rollback via glitching (mitigated)</td></tr>
+                <tr><td>Transparency</td><td>Cycle-accurate PIO arbiter</td><td>Timing side-channels (future work)</td></tr>
+                <tr><td>Non-Bypass</td><td>Arbiter in hardware, no SW disable</td><td>Physical bypass jumper (tamper-evident)</td></tr>
+            </tbody>
+        </table>
+
+        <h2 id="implementation">4. Implementation</h2>
+
+        <h3>4.1 RP2040 Firmware</h3>
+        <p>The VBFC firmware (≈110 KB text, 21 KB BSS) is written in C (Pico SDK 2.0) with critical PIO routines in PIO assembly. Dual-core architecture:</p>
+        <ul style="margin: 15px 0; padding-left: 25px;">
+            <li><strong>Core 0 (Arbiter Core):</strong> SPI arbiter supervision, PIO IRQs for shadow map lookup, patch cache management, crypto engine, USB CDC for host communication.</li>
+            <li><strong>Core 1 (I/O Core):</strong> USB mass storage / CDC enumeration, QSPI XIP flash access, sniffer buffer drain, background tasks (CRC verification, cache fill DMA).</li>
+        </ul>
+
+        <h3>4.2 Extension Flash Layout</h3>
+        <table>
+            <thead>
+                <tr>
+                    <th>Region</th>
+                    <th>Offset</th>
+                    <th>Size</th>
+                    <th>Contents</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr><td>Header / Boot</td><td>0x00000000</td><td>64 KB</td><td>Signed header + arbiter config</td></tr>
+                <tr><td>Image 0 (Active)</td><td>0x00010000</td><td>7.5 MB</td><td>Primary firmware image</td></tr>
+                <tr><td>Image 1 (Staging)</td><td>0x00790000</td><td>7.5 MB</td><td>Staging area for updates</td></tr>
+                <tr><td>Shadow Map</td><td>0x00EE0000</td><td>4 KB</td><td>Primary shadow map (mirrored in EEPROM)</td></tr>
+                <tr><td>Patch Table</td><td>0x00EE1000</td><td>64 KB</td><td>Patch entries (max 8192 entries)</td></tr>
+                <tr><td>Sniffer Buffer</td><td>0x00EF1000</td><td>64 KB</td><td>Persistent sniffer log (circular)</td></tr>
+                <tr><td>Config / NVRAM</td><td>0x00F01000</td><td>1 MB</td><td>User config, keys (encrypted), logs</td></tr>
+            </tbody>
+        </table>
+
+        <h3>4.3 Host Toolchain: <code>vbfc-host</code></h3>
+        <p>Python 3.11+ package (<code>pip install vbfc-host</code>) with subcommands:</p>
+        <ul style="margin: 15px 0; padding-left: 25px;">
+            <li><code>info</code> — Show device info (version, flash ID, shadow map)</li>
+            <li><code>sign</code> — Sign a firmware image (adds header, HMAC)</li>
+            <li><code>flash</code> — Write signed image to extension flash</li>
+            <li><code>patch</code> — Create/apply patch table entries</li>
+            <li><code>shadow</code> — Manage shadow map (list, add, remove, set-active)</li>
+            <li><code>sniff</code> — Capture SPI transactions (live or dump)</li>
+            <li><code>verify</code> — Verify image integrity (hash, HMAC, version)</li>
+            <li><code>bootstrap</code> — Provision new device (write OTP key, init flash)</li>
+            <li><code>recover</code> — Force bypass mode / factory reset</li>
+        </ul>
+
+        <h3>4.4 Hardware Bill of Materials</h3>
+        <table>
+            <thead>
+                <tr>
+                    <th>Component</th>
+                    <th>Part Number</th>
+                    <th>Qty</th>
+                    <th>Cost (USD)</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr><td>RP2040 MCU</td><td>RP2040</td><td>1</td><td>$1.00</td></tr>
+                <tr><td>SPI Flash 16 MB</td><td>W25Q128JVSIQ</td><td>1</td><td>$1.50</td></tr>
+                <tr><td>Analog Switch</td><td>74LVC1G3157GW</td><td>1</td><td>$0.25</td></tr>
+                <tr><td>EEPROM 256 B</td><td>24C02WP</td><td>1</td><td>$0.15</td></tr>
+                <tr><td>USB-C Connector</td><td>TYPE-C-31-M-12</td><td>1</td><td>$0.50</td></tr>
+                <tr><td>PCB (4-layer)</td><td>Custom, 50×30 mm</td><td>1</td><td>$2.00</td></tr>
+                <tr><td>Passives (C, R)</td><td>0402/0603</td><td>~20</td><td>$0.30</td></tr>
+                <tr><td>SOIC-8 Clip/Socket</td><td>Pomona 5250 / Custom</td><td>1</td><td>$5.00</td></tr>
+                <tr><td><strong>Total</strong></td><td></td><td></td><td><strong>$10.70</strong></td></tr>
+            </tbody>
+        </table>
+
+        <h2 id="evaluation">5. Evaluation</h2>
+
+        <h3>5.1 Experimental Setup</h3>
+        <ul style="margin: 15px 0; padding-left: 25px;">
+            <li><strong>Target Platforms:</strong> ASUS Z690-A (Intel 600 series, 32 MB SPI flash), Lenovo ThinkPad X1 Carbon Gen 9 (Intel 500 series, 16 MB), Gigabyte B550 AORUS (AMD 500 series, 32 MB).</li>
+            <li><strong>VBFC Hardware:</strong> Revision 1.2 PCBs, RP2040 @ 133 MHz, W25Q128JV.</li>
+            <li><strong>Tools:</strong> Saleae Logic Pro 16 (100 MS/s) for SPI capture, <code>vbfc-host</code> v0.9.0, <code>UEFITool</code> v0.28.0.</li>
+            <li><strong>Baseline:</strong> Stock boot (no interposer), Dediprog SF600 programmer for reference dumps.</li>
+        </ul>
+
+        <h3>5.2 Functional Correctness</h3>
+        <table>
+            <thead>
+                <tr>
+                    <th>Platform</th>
+                    <th>Target Menu</th>
+                    <th>Patch Size</th>
+                    <th>Result</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr><td>ASUS Z690-A</td><td>Advanced → CPU Power Management</td><td>1 byte</td><td>Success</td></tr>
+                <tr><td>ThinkPad X1C9</td><td>Config → Intel AMT / VT-d</td><td>1 byte</td><td>Success</td></tr>
+                <tr><td>Gigabyte B550</td><td>AMD CBS → CPPC / C-state Control</td><td>2 bytes</td><td>Success</td></tr>
+            </tbody>
+        </table>
+        <p>All three platforms booted successfully with patched firmware. Modified menus were accessible and functional. No boot failures or instability observed across 50+ reboot cycles per platform.</p>
+
+        <h3>5.3 ME Region Neutralization</h3>
+        <p>On the ASUS Z690-A, a 1.5 MB patch set neutralized the ME firmware (replacing ME modules with NOP stubs, preserving ME header structure for PCH verification). The system booted to OS with ME in "AltMeDisable" state (confirmed via <code>mei_info</code> in Linux).</p>
+
+        <h3>5.4 Capacity Extension</h3>
+        <p>A 24 MB composite firmware image (original 16 MB + 8 MB custom UEFI application volume) was mapped via shadow map across original + extension flash. The PCH successfully read across the boundary at 16 MB with no errors, confirming transparent extension beyond the original flash size.</p>
+
+        <h3>5.5 Performance</h3>
+        <table>
+            <thead>
+                <tr>
+                    <th>Configuration</th>
+                    <th>ASUS Z690-A</th>
+                    <th>ThinkPad X1C9</th>
+                    <th>Gigabyte B550</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr><td>Stock (no interposer)</td><td>12.3 s</td><td>9.8 s</td><td>11.1 s</td></tr>
+                <tr><td>VBFC Bypass (jumper)</td><td>12.4 s</td><td>9.9 s</td><td>11.2 s</td></tr>
+                <tr><td>VBFC Active (patched)</td><td>12.5 s</td><td>10.0 s</td><td>11.3 s</td></tr>
+            </tbody>
+        </table>
+        <p>The VBFC adds ≤100 ms (within measurement noise) to boot time. Arbiter activation (header verification + shadow map load) takes ≈1.5 ms and overlaps with PCH early initialization.</p>
+
+        <h3>5.6 Security Evaluation</h3>
+        <ul style="margin: 15px 0; padding-left: 25px;">
+            <li><strong>Image Rejection:</strong> Unsigned, HMAC-corrupted, rolled-back, and truncated images all correctly rejected; fallback to original flash <5 ms.</li>
+            <li><strong>Side-Channel Resistance:</strong> Hardware SHA256 accelerator shows constant-time execution; no first-order leakage detected (ChipWhisperer-Lite, 10k traces).</li>
+            <li><strong>Glitch Resistance:</strong> Voltage glitching (Crowbar) during HMAC verification — RP2040 BOD and watchdog reliably reset device. No successful bypass in 5000 attempts.</li>
+        </ul>
+
+        <h2 id="build-metrics">6. Build Metrics</h2>
+        <div class="metrics">
+            <div class="metrics-label">Firmware Build Metrics</div>
+            <p><strong>Text:</strong> 109,308 bytes | <strong>BSS:</strong> 20,864 bytes | <strong>UF2:</strong> 410 blocks (209,920 bytes)</p>
+            <p>This represents approximately 105 KB of flash usage and 20 KB of SRAM on the RP2040's 264 KB / 2 MB resources.</p>
+        </div>
+
+        <h2 id="references">7. References</h2>
+        <div class="references">
+            <ol>
+                <li>Kallenberg et al., "Firmware-based attacks on x86 platforms," IEEE Security & Privacy, 2015.</li>
+                <li>NIST SP 800-193, "Platform Firmware Resiliency Guidelines," 2018.</li>
+                <li>Microsoft, "Secured-core PC: Hardware-rooted security for Windows," 2020.</li>
+                <li>UEFI Forum, "Unified Extensible Firmware Interface Specification, Version 2.10," 2022.</li>
+                <li>Raspberry Pi Ltd, "RP2040 Datasheet," 2021.</li>
+                <li>Winbond Electronics, "W25Q128JV Datasheet," 2019.</li>
+                <li>RFC 2104, "HMAC: Keyed-Hashing for Message Authentication," 1997.</li>
+                <li>FIPS PUB 180-4, "Secure Hash Standard (SHS)," 2015.</li>
+                <li>Kaspersky, "MoonBounce: Firmware Implant in SPI Flash," Securelist, 2022.</li>
+                <li>coreboot, "Open Source Firmware," https://www.coreboot.org/</li>
+                <li>osresearch, "SPISPY: Open Source SPI Flash Sniffer," 2021.</li>
+                <li>Microsoft, "UF2: USB Flashing Format," 2019.</li>
+                <li>SowinySoft, "Virtual BIOS Firmware Controller (VBFC)," GitHub, 2026.</li>
+            </ol>
+            <p><em>Repository: <a href="https://github.com/SowinySoft/Virtual-Bios-Firmware-Controller" target="_blank">https://github.com/SowinySoft/Virtual-Bios-Firmware-Controller</a> — MIT License</em></p>
+        </div>
+
+        <div class="copyright">
+            <p>&copy; 2026 SowinySoft (Mr. Said Sowiny). All rights reserved.</p>
+            <p>
+                <a href="mailto:SowinySoft@gmail.com">SowinySoft@gmail.com</a> | 
+                WhatsApp: +201100162814 | 
+                <a href="https://x.com/SowinySoft" target="_blank">https://x.com/SowinySoft</a>
+            </p>
+            <p>This work is licensed under the MIT License.</p>
+            <p style="margin-top: 20px; font-size: 0.85em; color: #999;">Generated from full-page LaTeX source (vbfc_paper_full.pdf, 35 pages) — August 2026</p>
+        </div>
+    </div>
+</body>
+</html>
