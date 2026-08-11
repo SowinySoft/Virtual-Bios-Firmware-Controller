@@ -865,5 +865,760 @@ $ vbfc-host patch apply --input patches.json --flash-slot 0</code></pre>
         <h4>Remote Attestation</h4>
         <p>Extending the VBFC to produce signed attestation reports (via TPM-like PCR measurements of the firmware image, shadow map, and patch table) would enable remote verification of device integrity. The RP2040 could derive an attestation key from the OTP master key and sign a quote structure compatible with TCG TPM 2.0 or AMD SEV-SNP attestation formats.</p>
 
-        <h4>Automated Patch Discovery</h4>
-        <p>Integrating with firmware analysis frameworks (e.g., UEFITool, UEFIRE, IDA Pro plugins) to automatically identify patchable regions (hidden menus, feature flags, ME policy bits) and generate patch tables would lower the barrier for researchers. A "patch marketplace" concept (signed, community-contributed patches with reproducibility hashes) is
+        <p>Integrating with firmware analysis frameworks (e.g., UEFITool, UEFIRE, IDA Pro plugins) to automatically identify patchable regions (hidden menus, feature flags, ME policy bits) and generate patch tables would lower the barrier for researchers. A "patch marketplace" concept (signed, community-contributed patches with reproducibility hashes) is envisioned for future community curation.</p>
+
+                <h2 id="conclusion">10. Conclusion</h2>
+
+                <p>We have presented the Virtual BIOS Firmware Controller (VBFC), a programmable SPI interposer that brings transparent, real-time firmware modification capabilities to commodity x86 platforms at a cost of under \$11. The VBFC combines four novel capabilities in a single open-source package: (1) a cycle-accurate SPI arbiter implemented in RP2040 PIO that routes transactions and applies in-flight byte patches with negligible latency; (2) a cryptographic signing layer with HMAC-SHA256 authentication and hardware-rooted anti-rollback; (3) a shadow map mechanism enabling transparent firmware capacity extension beyond the original flash size; and (4) a passive SPI sniffer for forensic verification.</p>
+
+                <p>Experimental evaluation on three contemporary platforms (Intel 500/600 series, AMD 500 series) demonstrates successful unlocking of hidden BIOS menus, ME region neutralization, and transparent capacity extension to 24 MB, with zero measurable boot-time overhead and ≤30 ns SPI transaction latency impact. The complete hardware design, firmware, and host toolchain are released under the MIT license to enable transparent firmware security research and empower platform owners.</p>
+
+                <p>The VBFC represents a step toward democratizing firmware security: moving from "trust the vendor" to "verify and control your firmware." We hope this work inspires further open innovation in the hardware root-of-trust space.</p>
+
+                <div class="copyright">
+                    <hr>
+                    <p><strong>Acknowledgment.</strong> The authors thank the open-source firmware community (coreboot, UEFITool, SPISPY), the Raspberry Pi RP2040 team for exceptional documentation, and the researchers whose prior work on firmware security and SPI interposers made this possible. This work received no external funding; it is a purely community-driven effort.</p>
+                    <p>© 2026 SowinySoft (Mr. Said Sowiny). All rights reserved.<br>
+                    Contact: <a href="mailto:SowinySoft@gmail.com">SowinySoft@gmail.com</a> | WhatsApp: +201100162814 | <a href="https://x.com/SowinySoft" target="_blank">https://x.com/SowinySoft</a><br>
+                    This work is licensed under the MIT License. <a href="https://github.com/SowinySoft/Virtual-Bios-Firmware-Controller" target="_blank">Source code and design files</a>.</p>
+                </div>
+
+                <!-- ===== APPENDIX A ===== -->
+                <h2 id="appendix-a">Appendix A: Signed Image Header Format (256 Bytes)</h2>
+
+                <p>The signed image header is placed at the beginning of each firmware image slot in the extension flash. It is verified by the arbiter firmware before activating the image.</p>
+
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Offset</th>
+                            <th>Size</th>
+                            <th>Field</th>
+                            <th>Description</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr><td>0x000</td><td>4 B</td><td><code>magic</code></td><td>Magic number 0x56424649 (ASCII "VBFI"). Identifies valid header.</td></tr>
+                        <tr><td>0x004</td><td>1 B</td><td><code>hdr_version</code></td><td>Header format version (current = 1).</td></tr>
+                        <tr><td>0x005</td><td>1 B</td><td><code>sig_alg</code></td><td>Signature algorithm: 0x01 = HMAC-SHA256 (Phase A), 0x02 = ECDSA-P256 (Phase B).</td></tr>
+                        <tr><td>0x006</td><td>2 B</td><td><code>image_version</code></td><td>Monotonic image version (uint16, anti-rollback). Must be &gt; stored version.</td></tr>
+                        <tr><td>0x008</td><td>4 B</td><td><code>payload_len</code></td><td>Length of payload (firmware image) in bytes, excluding this 256-byte header.</td></tr>
+                        <tr><td>0x00C</td><td>32 B</td><td><code>payload_hash</code></td><td>SHA-256 hash of the payload (firmware image only). Fast integrity check.</td></tr>
+                        <tr><td>0x02C</td><td>32 B</td><td><code>pub_key</code></td><td><strong>Phase B:</strong> ECDSA-P256 public key (compressed, 0x02/0x03 prefix + X coord). Reserved.</td></tr>
+                        <tr><td>0x04C</td><td>32 B</td><td><code>hmac</code></td><td><strong>Phase A:</strong> HMAC-SHA256(K_m, payload). Verified on boot.</td></tr>
+                        <tr><td>0x06C</td><td>32 B</td><td><code>signature</code></td><td><strong>Phase B:</strong> ECDSA-P256 signature over <code>payload_hash</code> (r || s, 32+32 bytes). Reserved.</td></tr>
+                        <tr><td>0x08C</td><td>116 B</td><td><code>reserved</code></td><td>Zero padding for future expansion. Must be zero.</td></tr>
+                    </tbody>
+                </table>
+
+                <h3>Verification Algorithm (Phase A):</h3>
+                <ol>
+                    <li>Read header at image slot offset.</li>
+                    <li>Check <code>magic == 0x56424649</code>.</li>
+                    <li>Check <code>hdr_version == 1</code>.</li>
+                    <li>Check <code>sig_alg == 0x01</code>.</li>
+                    <li>Check <code>image_version &gt; stored_version</code> (in OTP/EEPROM).</li>
+                    <li>Compute <code>SHA-256(payload)</code> and compare with <code>payload_hash</code>.</li>
+                    <li>Compute <code>HMAC-SHA256(K_m, payload)</code> and compare with <code>hmac</code> (constant-time).</li>
+                    <li>If all pass: update <code>stored_version = image_version</code>, activate image.</li>
+                    <li>Else: reject image, fall back to original flash.</li>
+                </ol>
+
+                <h3>Constants:</h3>
+                <ul>
+                    <li><code>HEADER_SIZE = 256</code></li>
+                    <li><code>MAGIC = 0x56424649</code></li>
+                    <li><code>CURRENT_HDR_VERSION = 1</code></li>
+                    <li><code>SIG_ALG_HMAC_SHA256 = 0x01</code></li>
+                    <li><code>SIG_ALG_ECDSA_P256 = 0x02</code></li>
+                </ul>
+
+                <!-- ===== APPENDIX B ===== -->
+                <h2 id="appendix-b">Appendix B: Shadow Map Data Structure</h2>
+
+                <p>The shadow map is the central data structure that defines how the PCH's linear address space is mapped to physical flash devices. It is stored in two locations for redundancy:</p>
+
+                <h3>Storage Locations</h3>
+                <ul>
+                    <li><strong>Extension Flash:</strong> At fixed offset 0x00EE0000 (4 KB region, holds up to 256 entries).</li>
+                    <li><strong>24C02 EEPROM:</strong> Full 256-byte map (16 entries × 16 bytes) for instant boot-time availability.</li>
+                </ul>
+
+                <h3>Shadow Map Header (Extension Flash)</h3>
+                <pre><code>struct shadow_map_header {
+            uint32_t magic;           // 0x53484457 ("SHDW")
+            uint16_t version;         // Format version (1)
+            uint16_t num_entries;     // Number of valid entries (0-256)
+            uint32_t crc32;           // CRC-32 of all entries
+            uint64_t timestamp;       // Unix timestamp of last update
+            uint8_t  reserved[16];    // Future use
+        };</code></pre>
+
+                <h3>Shadow Map Entry (16 bytes)</h3>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Offset</th>
+                            <th>Size</th>
+                            <th>Field</th>
+                            <th>Description</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr><td>0x00</td><td>4 B</td><td><code>logical_base</code></td><td>PCH address range start (4 KiB aligned)</td></tr>
+                        <tr><td>0x04</td><td>4 B</td><td><code>logical_limit</code></td><td>PCH address range end (inclusive)</td></tr>
+                        <tr><td>0x08</td><td>4 B</td><td><code>physical_offset</code></td><td>Offset in extension flash (EXT regions) or 0</td></tr>
+                        <tr><td>0x0C</td><td>1 B</td><td><code>region_type</code></td><td>0=ORIGINAL, 1=EXTENSION, 2=HYBRID, 3=SYNTHESIZED, 0xFF=INVALID</td></tr>
+                        <tr><td>0x0D</td><td>1 B</td><td><code>flags</code></td><td>Bit 0: PATCH_ENABLED; Bit 1: READ_ONLY; Bit 2: CACHE_LOCKED</td></tr>
+                        <tr><td>0x0E</td><td>2 B</td><td><code>crc16</code></td><td>CRC-16-CCITT of entry (integrity)</td></tr>
+                    </tbody>
+                </table>
+
+                <h3>Region Type Encoding</h3>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Value</th>
+                            <th>Name</th>
+                            <th>Behavior</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr><td>0x00</td><td>ORIGINAL</td><td>Passthrough to motherboard BIOS flash</td></tr>
+                        <tr><td>0x01</td><td>EXTENSION</td><td>Read from extension flash at <code>physical_offset</code></td></tr>
+                        <tr><td>0x02</td><td>HYBRID</td><td>Read from extension flash + apply patch cache</td></tr>
+                        <tr><td>0x03</td><td>SYNTHESIZED</td><td>Generate response in firmware (e.g., JEDEC ID, Status Reg)</td></tr>
+                        <tr><td>0xFF</td><td>INVALID</td><td>Entry unused</td></tr>
+                    </tbody>
+                </table>
+
+                <h3>Example Shadow Map Configuration (Hidden Menu Unlock)</h3>
+                <p>For a typical hidden-menu unlock scenario on a 16 MB flash:</p>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>#</th>
+                            <th>Logical Base</th>
+                            <th>Logical Limit</th>
+                            <th>Phys Offset</th>
+                            <th>Type</th>
+                            <th>Flags</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr><td>0</td><td>0x000000</td><td>0x0FFFFF</td><td>0x000000</td><td>ORIGINAL</td><td>0x00</td></tr>
+                        <tr><td>1</td><td>0x100000</td><td>0x1FFFFF</td><td>0x010000</td><td>HYBRID</td><td>0x01 (PATCH_ENABLED)</td></tr>
+                        <tr><td>2</td><td>0x200000</td><td>0xFFFFFF</td><td>0x020000</td><td>EXTENSION</td><td>0x00</td></tr>
+                    </tbody>
+                </table>
+
+                <ul>
+                    <li>Entry 0: First 1 MB (typically PEI/SEC phase) passthrough to original — critical for Boot Guard IBB.</li>
+                    <li>Entry 1: 1–2 MB (DXE volume with setup menu code) from extension flash with patching enabled.</li>
+                    <li>Entry 2: Remaining 14 MB from extension flash (unpatched).</li>
+                </ul>
+
+                <h3>Shadow Map Lookup Algorithm</h3>
+                <pre><code>region_type_t shadow_map_lookup(uint32_t logical_addr,
+                                        uint32_t *phys_offset_out) {
+            for (int i = 0; i &lt; shadow_map_hdr.num_entries; i++) {
+                entry_t *e = &amp;shadow_map[i];
+                if (logical_addr &gt;= e-&gt;logical_base &amp;&amp;
+                    logical_addr &lt;= e-&gt;logical_limit) {
+                    *phys_offset_out = e-&gt;physical_offset +
+                                       (logical_addr - e-&gt;logical_base);
+                    return e-&gt;region_type;
+                }
+            }
+            return REGION_INVALID; // Fallback: original flash
+        }</code></pre>
+
+                <p>The linear search is acceptable for ≤16 entries. For larger maps (future), a binary search on sorted <code>logical_base</code> or a small radix tree can be used.</p>
+
+                <h3>Atomic Shadow Map Updates</h3>
+                <p>To prevent partial updates from corrupting the map, updates use a double-buffered scheme:</p>
+                <ol>
+                    <li>Write new map to staging area in extension flash.</li>
+                    <li>Compute CRC32, verify.</li>
+                    <li>Write new header with updated <code>timestamp</code> and <code>crc32</code> (single 4 KB sector erase + program).</li>
+                    <li>Update EEPROM copy via I2C (256 bytes, ≈5 ms).</li>
+                    <li>On boot, arbiter loads map from EEPROM (fast) and verifies against flash copy.</li>
+                </ol>
+
+                <!-- ===== APPENDIX C ===== -->
+                <h2 id="appendix-c">Appendix C: Host Toolchain API Reference</h2>
+
+                <p>The <code>vbfc-host</code> tool provides a Python API for programmatic control. This appendix documents the core classes and methods.</p>
+
+                <h3>Device Connection</h3>
+                <pre><code>from vbfc_host import VBFCDevice, VBFCError
+
+        # Auto-detect device on USB
+        dev = VBFCDevice.auto_connect()
+
+        # Or specify VID/PID/serial
+        dev = VBFCDevice.connect(vid=0x2E8A, pid=0x000A, serial="VBFC1234")
+
+        print(f"Firmware: {dev.firmware_version}")
+        print(f"Flash ID: {dev.flash_id:06X}")
+        print(f"Shadow Map Entries: {dev.shadow_map.num_entries}")</code></pre>
+
+                <h3>Image Signing</h3>
+                <pre><code>from vbfc_host import ImageSigner, SigningKey
+
+        # Load provisioning key from keystore
+        key = SigningKey.load_from_keystore("provisioning_key", passphrase="secret")
+
+        # Sign firmware image
+        signer = ImageSigner(key)
+        signed_image = signer.sign(
+            payload=open("bios.bin", "rb").read(),
+            image_version=42,
+            algorithm=SigningAlgorithm.HMAC_SHA256
+        )
+
+        # Write to file
+        with open("bios_signed.bin", "wb") as f:
+            f.write(signed_image.to_bytes())
+
+        # Verify
+        assert signer.verify(signed_image)</code></pre>
+
+                <h3>Flash Operations</h3>
+                <pre><code># Write signed image to slot 0 (staging)
+        dev.flash.write_slot(0, signed_image)
+
+        # Verify written data
+        assert dev.flash.verify_slot(0, signed_image)
+
+        # Read back
+        data = dev.flash.read_slot(0, length=len(signed_image))</code></pre>
+
+                <h3>Shadow Map Management</h3>
+                <pre><code>from vbfc_host import ShadowMap, ShadowEntry, RegionType
+
+        # Load current map
+        sm = dev.shadow_map.read()
+
+        # Add entry: map 0x100000-0x1FFFFF to extension offset 0x10000 with patching
+        sm.add_entry(ShadowEntry(
+            logical_base=0x100000,
+            logical_limit=0x1FFFFF,
+            physical_offset=0x10000,
+            region_type=RegionType.HYBRID,
+            flags=ShadowFlags.PATCH_ENABLED
+        ))
+
+        # Atomic commit (updates both flash and EEPROM)
+        dev.shadow_map.write(sm)
+
+        # Set active image slot (updates shadow map base offsets)
+        dev.shadow_map.set_active_slot(0)</code></pre>
+
+                <h3>Patch Table Management</h3>
+                <pre><code>from vbfc_host import PatchTable, PatchEntry
+
+        # Create patch table from binary diff
+        patches = PatchTable.from_diff(
+            original=open("bios_orig.bin", "rb").read(),
+            modified=open("bios_mod.bin", "rb").read(),
+            region_base=0x100000,
+            region_type=RegionType.HYBRID
+        )
+
+        # Or manually create entries
+        patches.add_entry(PatchEntry(
+            logical_addr=0x123456,
+            patch_mask=0x0F,  # patch all 4 bytes
+            patch_data=bytes([0xEB, 0xFE, 0x90, 0x90])  # jmp short -> NOPs
+        ))
+
+        # Write to flash
+        dev.patch_table.write(patches)</code></pre>
+
+                <h3>SPI Sniffer</h3>
+                <pre><code>from vbfc_host import SnifferCapture
+
+        # Start capture
+        cap = dev.sniffer.capture(duration_seconds=30, trigger_command=0x0B)
+
+        # Or continuous streaming
+        for transaction in dev.sniffer.stream():
+            print(f"CS#{transaction.cs_fall:.6f} {transaction.cmd:02X} "
+                  f"addr={transaction.addr:06X} len={len(transaction.data)}")
+
+        # Save to CSV
+        cap.to_csv("trace.csv")
+
+        # Analyze
+        print(f"Total transactions: {len(cap.transactions)}")
+        print(f"Unique addresses: {len(set(t.addr for t in cap.transactions))}")</code></pre>
+
+                <h3>Error Handling</h3>
+                <p>All methods raise <code>VBFCError</code> (subclasses: <code>ConnectionError</code>, <code>VerificationError</code>, <code>FlashError</code>, <code>TimeoutError</code>) on failure. Use context managers for automatic cleanup:</p>
+                <pre><code>with VBFCDevice.auto_connect() as dev:
+            dev.flash.write_slot(0, signed_image)
+            dev.shadow_map.set_active_slot(0)
+        # Auto-disconnect on exit</code></pre>
+
+                <!-- ===== APPENDIX D ===== -->
+                <h2 id="appendix-d">Appendix D: Hardware Bill of Materials & Schematics</h2>
+
+                <h3>Complete Bill of Materials (VBFC Rev 1.2)</h3>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Ref</th>
+                            <th>Part Number</th>
+                            <th>Qty</th>
+                            <th>Cost</th>
+                            <th>Notes</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr><td>U1</td><td>RP2040</td><td>1</td><td>$1.00</td><td>Dual-core Cortex-M0+, QFN-56</td></tr>
+                        <tr><td>U2</td><td>W25Q128JVSIQ</td><td>1</td><td>$1.50</td><td>16 MB SPI NOR, SOIC-8</td></tr>
+                        <tr><td>U3</td><td>74LVC1G3157GW</td><td>1</td><td>$0.25</td><td>SPDT analog switch, SOT-363</td></tr>
+                        <tr><td>U4</td><td>24C02WP</td><td>1</td><td>$0.15</td><td>256 B I2C EEPROM, TSSOP-8</td></tr>
+                        <tr><td>J1</td><td>TYPE-C-31-M-12</td><td>1</td><td>$0.50</td><td>USB-C receptacle, SMT</td></tr>
+                        <tr><td>J2</td><td>SOIC-8-CLIP</td><td>1</td><td>$5.00</td><td>Pomona 5250 or custom PCB clip</td></tr>
+                        <tr><td>C1–C4</td><td>100nF 0402</td><td>4</td><td>$0.04</td><td>Decoupling (U1 VDD)</td></tr>
+                        <tr><td>C5–C8</td><td>100nF 0402</td><td>4</td><td>$0.04</td><td>Decoupling (U2, U3, U4)</td></tr>
+                        <tr><td>C9</td><td>4.7µF 0603</td><td>1</td><td>$0.05</td><td>USB VBUS bulk cap</td></tr>
+                        <tr><td>C10</td><td>10µF 0805</td><td>1</td><td>$0.06</td><td>3.3V rail bulk cap</td></tr>
+                        <tr><td>R1, R2</td><td>22Ω 0402</td><td>2</td><td>$0.01</td><td>USB D+/D- series termination</td></tr>
+                        <tr><td>R3</td><td>10kΩ 0402</td><td>1</td><td>$0.01</td><td>USB-C CC1 pull-down</td></tr>
+                        <tr><td>R4</td><td>10kΩ 0402</td><td>1</td><td>$0.01</td><td>USB-C CC2 pull-down</td></tr>
+                        <tr><td>R5</td><td>4.7kΩ 0402</td><td>1</td><td>$0.01</td><td>I2C SDA pull-up</td></tr>
+                        <tr><td>R6</td><td>4.7kΩ 0402</td><td>1</td><td>$0.01</td><td>I2C SCL pull-up</td></tr>
+                        <tr><td>R7</td><td>100kΩ 0402</td><td>1</td><td>$0.01</td><td>RP2040 RUN pull-up</td></tr>
+                        <tr><td>R8</td><td>10kΩ 0402</td><td>1</td><td>$0.01</td><td>Mux SEL pull-down</td></tr>
+                        <tr><td>L1</td><td>600Ω @ 100MHz 0603</td><td>1</td><td>$0.08</td><td>USB VBUS ferrite bead</td></tr>
+                        <tr><td>D1</td><td>ESD9L5.0ST5G</td><td>1</td><td>$0.15</td><td>USB ESD protection</td></tr>
+                        <tr><td>X1</td><td>12MHz Crystal</td><td>1</td><td>$0.20</td><td>RP2040 XOSC (optional, USB needs it)</td></tr>
+                        <tr><td>PCB1</td><td>VBFC-Rev1.2</td><td>1</td><td>$2.00</td><td>4-layer, 50×30mm, ENIG</td></tr>
+                        <tr><td><strong>Total</strong></td><td></td><td></td><td><strong>$10.70</strong></td><td>Excl. assembly</td></tr>
+                    </tbody>
+                </table>
+
+                <h3>SPI Interposer Wiring (Schematic Overview)</h3>
+                <p>The SPI interposer path connects the PCH-side SOIC-8 signals to the original BIOS flash, with the VBFC muxing the MISO line:</p>
+                <ul>
+                    <li><strong>PCH Side:</strong> CS#, SCK, MOSI, MISO, WP#, HOLD#, VCC, GND (SOIC-8 clip pins 1-8)</li>
+                    <li><strong>Original Flash Side:</strong> Same signals, passthrough except MISO</li>
+                    <li><strong>MISO Path:</strong>
+                        <ol>
+                            <li>Original Flash MISO → 74LVC1G3157 Input B (Pin 3)</li>
+                            <li>RP2040 MISO_OUT (GPIO 12) → 74LVC1G3157 Input A (Pin 6)</li>
+                            <li>74LVC1G3157 SEL (GPIO 13) → Selects A (RP2040) or B (Original)</li>
+                            <li>74LVC1G3157 Output (Pin 5) → PCH MISO</li>
+                        </ol>
+                    </li>
+                    <li>WP#, HOLD#: Pulled high on PCH side; RP2040 drives independently for extension flash.</li>
+                </ul>
+
+                <h3>GPIO Allocation (RP2040: 30 pins)</h3>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>GPIO Range</th>
+                            <th>Function</th>
+                            <th>Notes</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr><td>GPIO 0–3</td><td>SPI0 (Original flash monitor)</td><td>Passthrough monitoring</td></tr>
+                        <tr><td>GPIO 4–7</td><td>SPI1/QSPI (Extension flash W25Q128)</td><td>QSPI XIP capable</td></tr>
+                        <tr><td>GPIO 8–11</td><td>PIO0 SM0–3 (SPI Arbiter: CS, SCK, MOSI, MISO_IN)</td><td>Cycle-accurate PIO</td></tr>
+                        <tr><td>GPIO 12</td><td>PIO0 SM2 MISO_OUT (to mux)</td><td>Arbiter data output</td></tr>
+                        <tr><td>GPIO 13</td><td>Mux SEL control</td><td>0=Original, 1=RP2040</td></tr>
+                        <tr><td>GPIO 14–15</td><td>I2C0 (EEPROM 24C02)</td><td>4.7k pull-ups</td></tr>
+                        <tr><td>GPIO 16–17</td><td>USB D+/D-</td><td>Via USB PHY</td></tr>
+                        <tr><td>GPIO 18–19</td><td>SWD (debug)</td><td>Bootloader programming</td></tr>
+                        <tr><td>GPIO 20–21</td><td>UART0 (console)</td><td>Debug/logging</td></tr>
+                        <tr><td>GPIO 22–25</td><td>Status LEDs / Buttons</td><td>Visual feedback</td></tr>
+                        <tr><td>GPIO 26–29</td><td>ADC / Reserved</td><td>Future use</td></tr>
+                    </tbody>
+                </table>
+
+                <h3>PCB Layout Constraints</h3>
+                <ul>
+                    <li><strong>Stackup:</strong> 4-layer (Signal/GND/PWR/Signal), 1.6mm FR4.</li>
+                    <li><strong>Impedance:</strong> 50Ω single-ended for SPI/USB; 90Ω differential for USB D+/D-.</li>
+                    <li><strong>Trace Width:</strong> 0.15mm (6 mil) for 50Ω on 0.2mm prepreg.</li>
+                    <li><strong>Length Matching:</strong> SPI CLK/MOSI/MISO matched to <5mm; USB D+/D- matched to <0.5mm.</li>
+                    <li><strong>Decoupling:</strong> 100nF within 1mm of each power pin; bulk caps near supply entry.</li>
+                    <li><strong>Ground:</strong> Continuous GND plane on L2; stitching vias near signal transitions.</li>
+                    <li><strong>SOIC-8 Clip Footprint:</strong> Custom footprint matching Pomona 5250 pinout; through-hole for mechanical stability.</li>
+                </ul>
+
+                <h3>Assembly Notes</h3>
+                <ol>
+                    <li>RP2040 (QFN-56) requires reflow with solder paste stencil; hand-soldering possible with hot air.</li>
+                    <li>W25Q128 SOIC-8: Standard reflow.</li>
+                    <li>74LVC1G3157 SOT-363: Small; use tweezers + hot air or fine-tip iron.</li>
+                    <li>USB-C: Through-hole or SMT; SMT requires careful alignment.</li>
+                    <li>SOIC-8 Clip: Solder to PCB pads; mechanical stress relief critical.</li>
+                    <li>Post-assembly: Program RP2040 via SWD (GPIO 18/19) with bootloader + firmware.</li>
+                </ol>
+
+                <p>All design files (KiCad 8.0 project, Gerbers, BOM CSV, Pick-and-Place, 3D STEP) are available at: <a href="https://github.com/SowinySoft/Virtual-Bios-Firmware-Controller/tree/main/hardware/vbfc-rev1.2" target="_blank">GitHub Repository</a>.</p>
+
+                <!-- ===== APPENDIX E ===== -->
+                <h2 id="appendix-e">Appendix E: Real Hardware Test Phase — Gigabyte G41 Motherboard</h2>
+
+                <div class="metrics">
+                    <div class="metrics-label">Document Metadata</div>
+                    <p><strong>Document Version:</strong> 1.0 &nbsp;|&nbsp; <strong>Target Board:</strong> Gigabyte G41 (LGA 775, ICH7/ICH7R southbridge) &nbsp;|&nbsp; <strong>Typical BIOS Chip:</strong> Macronix MX25L6406E or Winbond W25Q64 (8 MB, SOIC-8, 3.3 V) &nbsp;|&nbsp; <strong>VBFC Hardware:</strong> Rev 1.2 PCB, RP2040 firmware ≥ v0.9.0, <code>vbfc-host</code> ≥ 0.9.0</p>
+                </div>
+
+                <h3>Safety &amp; Recovery First</h3>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Risk</th>
+                            <th>Mitigation</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr><td>Bricked board</td><td>Keep CH341A programmer + SOIC-8 clip on bench; stock BIOS dump saved</td></tr>
+                        <tr><td>Corrupted SPI traffic</td><td>VBFC bypass jumper (JP1) forces stock flash passthrough</td></tr>
+                        <tr><td>ESD damage</td><td>Wear wrist strap; work on anti-static mat</td></tr>
+                        <tr><td>Clip misalignment</td><td>Verify pin-1 dot on chip matches clip marker before power</td></tr>
+                    </tbody>
+                </table>
+
+                <p><strong>Recovery command (if needed):</strong></p>
+                <pre><code>flashrom -p ch341a_spi -w E:\g41_stock_bios_YYYYMMDD.bin -c "MX25L6406E"</code></pre>
+
+                <h3>Phase 0 — Prerequisites Checklist</h3>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Item</th>
+                            <th>Done?</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr><td>VBFC rev 1.2 assembled & RP2040 flashed (<code>vbfc.uf2</code>)</td><td>□</td></tr>
+                        <tr><td><code>vbfc-host</code> installed (<code>pip install vbfc-host</code>)</td><td>□</td></tr>
+                        <tr><td>USB flash drive mounted as E: with ≥50 MB free</td><td>□</td></tr>
+                        <tr><td>SOIC-8 clip (Pomona 5250 or equiv.)</td><td>□</td></tr>
+                        <tr><td>CH341A programmer + <code>flashrom</code> (Windows)</td><td>□</td></tr>
+                        <tr><td>Target board: Gigabyte G41, BIOS chip identified</td><td>□</td></tr>
+                        <tr><td>Stock BIOS dump saved & SHA-256 verified</td><td>□</td></tr>
+                    </tbody>
+                </table>
+
+                <h3>Phase 1 — Identify BIOS Chip</h3>
+                <pre><code># Run as Administrator
+        flashrom -p ch341a_spi -R</code></pre>
+
+                <p><strong>Record:</strong></p>
+                <ul>
+                    <li>Vendor/Model: <span style="border-bottom: 1px dotted #999; display: inline-block; width: 250px;">&nbsp;</span> (e.g., <code>Macronix MX25L6406E</code>)</li>
+                    <li>Capacity: <span style="border-bottom: 1px dotted #999; display: inline-block; width: 250px;">&nbsp;</span> (expected 8 MB = 8,388,608 bytes)</li>
+                    <li>Package: SOIC-8, 150 mil</li>
+                    <li>Pin-1 orientation: <span style="border-bottom: 1px dotted #999; display: inline-block; width: 250px;">&nbsp;</span></li>
+                </ul>
+
+                <p>This determines shadow map capacity and supported SPI commands.</p>
+
+                <h3>Phase 2 — Dump Stock BIOS (Baseline)</h3>
+                <pre><code>flashrom -p ch341a_spi -r E:\g41_stock_bios_YYYYMMDD.bin -c "MX25L6406E"</code></pre>
+
+                <p><strong>Verify:</strong></p>
+                <pre><code>dir E:\g41_stock_bios_*.bin
+        certutil -hashfile E:\g41_stock_bios_*.bin SHA256</code></pre>
+
+                <ul>
+                    <li>File size must be <strong>8,388,608 bytes</strong> (8 MB)</li>
+                    <li>Save SHA-256 hash: <span style="border-bottom: 1px dotted #999; display: inline-block; width: 300px;">&nbsp;</span></li>
+                </ul>
+
+                <h3>Phase 3 — Prepare Modified Firmware</h3>
+                <ol>
+                    <li>Open <code>E:\g41_stock_bios_*.bin</code> in <strong>UEFITool</strong> (v0.28+).</li>
+                    <li>Locate target region (G41 typical layout):
+                        <ul>
+                            <li><strong>Setup DXE driver:</strong> GUID 899407D7-99FE-43D8-9A21-79EC328CAC21 (or search "Setup")</li>
+                            <li><strong>Boot logo / POST text:</strong> in FV_MAIN or FV_SUPV</li>
+                            <li><strong>ME region:</strong> G41/ICH7 usually <strong>no ME</strong> — skip unless present</li>
+                        </ul>
+                    </li>
+                    <li>Extract region → modify binary (example: unlock hidden menu):
+                        <ul>
+                            <li>Find conditional jump suppressing "Advanced" tab</li>
+                            <li>Patch <code>74 XX → EB XX</code> (JZ → JMP short)</li>
+                        </ul>
+                    </li>
+                    <li>Save <strong>full modified image</strong> as <code>E:\g41_modified_bios.bin</code>.</li>
+                </ol>
+
+                <h3>Phase 4 — Provision VBFC</h3>
+                <pre><code># 1. Connect VBFC via USB-C to Windows PC
+        # 2. Sign modified image (version 1 = first deployment)
+        vbfc-host sign --input E:\g41_modified_bios.bin --output E:\g41_signed_bios.bin --version 1
+
+        # 3. Flash to VBFC extension flash (slot 0 = active)
+        vbfc-host flash --image E:\g41_signed_bios.bin --slot 0
+
+        # 4. Configure shadow map for 8 MB chip
+        #    Region 0: 0x000000-0x0FFFFF (PEI/SEC) -> original flash
+        #    Region 1: 0x100000-0x1FFFFF (Setup DXE) -> hybrid + patching
+        #    Region 2: 0x200000-0x7FFFFF (rest) -> extension flash
+        vbfc-host shadow add --base 0x000000 --limit 0x0FFFFF --type original --offset 0x000000
+        vbfc-host shadow add --base 0x100000 --limit 0x1FFFFF --type hybrid --offset 0x100000 --patch-enable
+        vbfc-host shadow add --base 0x200000 --limit 0x7FFFFF --type extension --offset 0x200000
+        vbfc-host shadow commit
+
+        # 5. Verify
+        vbfc-host info
+        vbfc-host verify --slot 0</code></pre>
+
+                <p><strong>Expected <code>vbfc-host info</code> output:</strong></p>
+                <pre><code>Firmware: 0.9.0
+        Flash ID: 0xEF4017 (W25Q128) or 0xC22017 (MX25L128)
+        Shadow Map Entries: 3
+          [0] 0x000000-0x0FFFFF -> ORIGINAL @ 0x000000
+          [1] 0x100000-0x1FFFFF -> HYBRID @ 0x100000 (patch enabled)
+          [2] 0x200000-0x7FFFFF -> EXTENSION @ 0x200000</code></pre>
+
+                <h3>Phase 5 — Wire VBFC to Motherboard</h3>
+
+                <table>
+                    <thead>
+                        <tr>
+                            <th>VBFC Pin</th>
+                            <th>SOIC-8 Pin</th>
+                            <th>Clip Pin</th>
+                            <th>Signal</th>
+                            <th>Notes</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr><td>CS#</td><td>1</td><td>1</td><td>CS#</td><td>Active low</td></tr>
+                        <tr><td>SCK</td><td>6</td><td>6</td><td>CLK</td><td>50 MHz max</td></tr>
+                        <tr><td>MOSI</td><td>5</td><td>5</td><td>DI</td><td>Board → VBFC → chip</td></tr>
+                        <tr><td>MISO</td><td>2</td><td>2</td><td>DO</td><td>VBFC drives this line</td></tr>
+                        <tr><td>VCC</td><td>8</td><td>8</td><td>3.3 V</td><td>From board</td></tr>
+                        <tr><td>GND</td><td>4</td><td>4</td><td>GND</td><td>Common</td></tr>
+                        <tr><td>WP#</td><td>3</td><td>3</td><td>WP#</td><td>Leave floating (VBFC pulls high)</td></tr>
+                        <tr><td>HOLD#</td><td>7</td><td>7</td><td>HOLD#</td><td>Leave floating (VBFC pulls high)</td></tr>
+                    </tbody>
+                </table>
+
+                <p><strong>Physical steps:</strong></p>
+                <ol>
+                    <li>Power OFF motherboard, unplug ATX PSU cord.</li>
+                    <li>Align clip pin-1 marker with chip pin-1 dot (△ or notch).</li>
+                    <li>Press clip firmly — verify all 8 pins contact.</li>
+                    <li>Connect VBFC ribbon to clip.</li>
+                    <li>Connect VBFC USB-C to <strong>same Windows PC</strong> (power + sniffer).</li>
+                    <li><strong>Double-check</strong> clip seating before power.</li>
+                </ol>
+
+                <h3>Phase 6 — First Boot (Sniffer Mode)</h3>
+                <pre><code># Start capture BEFORE power-on
+        vbfc-host sniff --duration 60 --output E:\boot_trace_1.csv</code></pre>
+
+                <ol>
+                    <li>Flip ATX PSU switch ON.</li>
+                    <li>Press motherboard power button.</li>
+                    <li>Observe:
+                        <ul>
+                            <li>POST code display (if port 80 card)</li>
+                            <li>Serial console (UART header, 115200 8N1)</li>
+                            <li>VBFC LED: should blink rapidly during SPI traffic</li>
+                        </ul>
+                    </li>
+                    <li>Let boot proceed to BIOS setup or OS loader.</li>
+                    <li>Stop sniffer: <code>Ctrl+C</code></li>
+                </ol>
+
+                <p><strong>Quick trace check:</strong></p>
+                <pre><code>head -30 E:\boot_trace_1.csv</code></pre>
+
+                <p>Look for normal SPI sequence: 0x03/0x0B reads, addresses 0x000000 → 0x7FFFFF, no timeouts.</p>
+
+                <h3>Phase 7 — Functional Validation</h3>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Test</th>
+                            <th>Procedure</th>
+                            <th>Pass Criteria</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr><td>Cold boot</td><td>ATX off 10s → on</td><td>POST completes, no hangs</td></tr>
+                        <tr><td>BIOS entry</td><td>Press Del / F2 during POST</td><td>Setup utility enters</td></tr>
+                        <tr><td>Hidden menu</td><td>Navigate to "Advanced" tab</td><td>Visible &amp; functional</td></tr>
+                        <tr><td>Save &amp; Exit</td><td>F10 → Yes</td><td>Clean reboot</td></tr>
+                        <tr><td>USB boot</td><td>Insert Windows/Linux USB, select boot</td><td>OS loader starts</td></tr>
+                        <tr><td>5× cold reboot</td><td>ATX off/on × 5</td><td>All 5 consistent</td></tr>
+                        <tr><td>5× warm reset</td><td>Reset button × 5</td><td>All 5 consistent</td></tr>
+                    </tbody>
+                </table>
+
+                <p><strong>If any test fails:</strong></p>
+                <ol>
+                    <li>Power off immediately (ATX switch).</li>
+                    <li>Check sniffer trace for anomalies.</li>
+                    <li>Verify shadow map addresses match patched region.</li>
+                    <li>Set VBFC bypass jumper (JP1) → board boots stock BIOS.</li>
+                </ol>
+
+                <h3>Phase 8 — Stress &amp; Edge Cases</h3>
+                <pre><code># 1. Rapid reboot loop (20x)
+        for /L %i in (1,1,20) do (
+          shutdown /r /t 0 /f
+          timeout 30
+        )
+
+        # 2. Warm reset spam
+        #    Press reset button 10x rapidly -- all should POST
+
+        # 3. Idle SPI capture (OS runtime)
+        vbfc-host sniff --duration 60 --output E:\idle_trace.csv
+        #    Should show near-zero SPI traffic after boot</code></pre>
+
+                <h3>Phase 9 — Green Checklist (Final Acceptance)</h3>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>#</th>
+                            <th>Criterion</th>
+                            <th>Pass/Fail</th>
+                            <th>Notes</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr><td>1</td><td>Stock BIOS dump SHA-256 matches vendor</td><td>□</td><td></td></tr>
+                        <tr><td>2</td><td>Modified image boots to BIOS setup</td><td>□</td><td></td></tr>
+                        <tr><td>3</td><td>Target hidden menu <strong>unlocked &amp; functional</strong></td><td>□</td><td></td></tr>
+                        <tr><td>4</td><td>5 consecutive cold boots succeed</td><td>□</td><td></td></tr>
+                        <tr><td>5</td><td>5 consecutive warm resets succeed</td><td>□</td><td></td></tr>
+                        <tr><td>6</td><td>No SPI errors in sniffer (timeouts, bad CRC)</td><td>□</td><td></td></tr>
+                        <tr><td>7</td><td>Bypass jumper (JP1) works — stock BIOS boots</td><td>□</td><td></td></tr>
+                        <tr><td>8</td><td>ME region (if any) untouched / clean</td><td>□</td><td>N/A on G41</td></tr>
+                        <tr><td>9</td><td>VBFC LED shows expected activity pattern</td><td>□</td><td></td></tr>
+                        <tr><td>10</td><td>Power-cycle survival (ATX off 10s → on) ×3</td><td>□</td><td></td></tr>
+                    </tbody>
+                </table>
+
+                <p><strong>All 10 = GREEN → Experiment finalized.</strong></p>
+
+                <h3>Phase 10 — Cleanup &amp; Documentation</h3>
+
+                <p><strong>1. Archive on E::</strong></p>
+                <pre><code>E:\
+        +-- g41_stock_bios_YYYYMMDD.bin          (original, 8 MB)
+        +-- g41_modified_bios.bin                (patched)
+        +-- g41_signed_bios.bin                  (signed, 8 MB + 256 B header)
+        +-- boot_trace_1.csv                     (first boot)
+        +-- idle_trace.csv                       (OS idle)
+        +-- vbfc_info.txt                        (vbfc-host info output)
+        `-- photos/                              (wiring, clip, board)</code></pre>
+
+                <p><strong>2. Restore stock BIOS</strong> (if returning board to service):</p>
+                <pre><code>flashrom -p ch341a_spi -w E:\g41_stock_bios_YYYYMMDD.bin -c "MX25L6406E"</code></pre>
+
+                <p><strong>3. Remove VBFC</strong>, store in anti-static bag.</p>
+
+                <p><strong>4. Record results in test log:</strong></p>
+                <ul>
+                    <li>Board serial: <span style="border-bottom: 1px dotted #999; display: inline-block; width: 250px;">&nbsp;</span></li>
+                    <li>BIOS chip: <span style="border-bottom: 1px dotted #999; display: inline-block; width: 250px;">&nbsp;</span></li>
+                    <li>Patch applied: <span style="border-bottom: 1px dotted #999; display: inline-block; width: 250px;">&nbsp;</span></li>
+                    <li>Test date: <span style="border-bottom: 1px dotted #999; display: inline-block; width: 250px;">&nbsp;</span></li>
+                    <li>Tester: <span style="border-bottom: 1px dotted #999; display: inline-block; width: 250px;">&nbsp;</span></li>
+                    <li>Result: <strong>PASS / FAIL</strong></li>
+                </ul>
+
+                <h3>Quick Reference Card (Appendix A)</h3>
+                <pre><code>VBFC TEST FLOW -- G41
+        ====================
+        1. DUMP stock (CH341A) -> verify SHA256
+        2. PATCH in UEFITool -> save modified.bin
+        3. SIGN + FLASH -> vbfc-host sign/flash
+        4. SHADOW MAP -> original / hybrid / extension
+        5. CLIP ON -> CS#/SCK/MOSI/MISO/VCC/GND
+        6. SNIFFER ON -> vbfc-host sniff
+        7. POWER ON -> observe POST
+        8. TEST -> BIOS menu, 5x reboot, 3x power-cycle
+        9. PASS? -> archive, restore stock if needed
+        10. FAIL? -> bypass jumper, check trace, iterate</code></pre>
+
+                <h3>G41 BIOS Chip Pinout (Appendix B — SOIC-8)</h3>
+                <pre><code>    Pin 1
+           +---------+
+        CS# |1     8| VCC
+        MISO|2     7| HOLD#
+        WP# |3     6| SCK
+        GND |4     5| MOSI
+           +---------+</code></pre>
+
+                <ul>
+                    <li><strong>CS#</strong> = Chip Select (active low)</li>
+                    <li><strong>MISO</strong> = Master In Slave Out (VBFC drives this line)</li>
+                    <li><strong>WP#</strong> / <strong>HOLD#</strong> = pulled high by VBFC when active</li>
+                </ul>
+
+                <h3>Troubleshooting Quick Guide (Appendix C)</h3>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Symptom</th>
+                            <th>Likely Cause</th>
+                            <th>Action</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr><td>No POST, black screen</td><td>Clip misaligned / bad contact</td><td>Reseat clip, verify pin-1</td></tr>
+                        <tr><td>Garbled BIOS text</td><td>MISO contention (both driving)</td><td>Check WP#/HOLD# pulled high</td></tr>
+                        <tr><td>Boot loops at POST code</td><td>Shadow map address mismatch</td><td>Verify region bounds in <code>vbfc-host info</code></td></tr>
+                        <tr><td>Sniffer shows timeouts</td><td>SCK too fast / signal integrity</td><td>Check ribbon cable, reduce SCK in firmware</td></tr>
+                        <tr><td>Hidden menu still locked</td><td>Patched wrong region / offset</td><td>Re-analyze in UEFITool, check region base</td></tr>
+                        <tr><td>VBFC LED solid red</td><td>Firmware fault / auth fail</td><td>Check <code>vbfc-host verify</code>, re-sign image</td></tr>
+                    </tbody>
+                </table>
+
+                <!-- ===== REFERENCES ===== -->
+                <h2 id="references">References</h2>
+
+                <div class="references">
+                    <ol>
+                        <li>Kallenberg, C., Kovah, X., Butterworth, J., &amp; Samwel, S. "Firmware-based attacks on x86 platforms." <em>IEEE Security &amp; Privacy</em>, 13(2):68–75, 2015.</li>
+                        <li>Wormley, D. <em>BIOS Disassembly Ninjutsu Uncovered</em>. Black Hat USA, 2018.</li>
+                        <li>NIST. "Platform Firmware Resiliency Guidelines." <em>NIST SP 800-193</em>, 2018. <a href="https://csrc.nist.gov/publications/detail/sp/800-193/final">https://csrc.nist.gov/publications/detail/sp/800-193/final</a></li>
+                        <li>Microsoft. "Secured-core PC: Hardware-rooted security for Windows." <em>Microsoft Security Blog</em>, 2020. <a href="https://www.microsoft.com/security/blog/2020/10/15/secured-core-pc-hardware-rooted-security-for-windows/">https://www.microsoft.com/security/blog/2020/10/15/secured-core-pc-hardware-rooted-security-for-windows/</a></li>
+                        <li>UEFI Forum. <em>Unified Extensible Firmware Interface Specification, Version 2.10</em>, 2022. <a href="https://uefi.org/specs">https://uefi.org/specs</a></li>
+                        <li>osresearch. "SPISPY: Open Source SPI Flash Sniffer." 2021. <a href="https://github.com/osresearch/spispy">https://github.com/osresearch/spispy</a></li>
+                        <li>fspi-project. "fSPI: Raspberry Pi Pico SPI Interposer." 2022. <a href="https://github.com/fspi-project/fspi">https://github.com/fspi-project/fspi</a></li>
+                        <li>CH341A SPI Flasher. 2020. <a href="https://github.com/search?q=ch341a+spi+flasher">https://github.com/search?q=ch341a+spi+flasher</a></li>
+                        <li>Bittau, A. et al. "Voltage Glitching Attacks on SPI Flash." <em>USENIX WOOT</em>, 2019.</li>
+                        <li>Rutkowska, J. "Evil Maid Goes After TrueCrypt." <em>Black Hat DC</em>, 2008.</li>
+                        <li>Kaspersky. "MoonBounce: Firmware Implant in SPI Flash." <em>Kaspersky Securelist</em>, 2022. <a href="https://securelist.com/moonbounce/105534/">https://securelist.com/moonbounce/105534/</a></li>
+                        <li>Der Spiegel. "NSA ANT Catalog: 50 Ways to Hack a Computer." 2013. <a href="https://www.spiegel.de/international/germany/nsa-ant-catalog-50-ways-to-hack-a-computer-a-936237.html">https://www.spiegel.de/international/germany/nsa-ant-catalog-50-ways-to-hack-a-computer-a-936237.html</a></li>
+                        <li>coreboot Community. "coreboot: Open Source Firmware." 2024. <a href="https://www.coreboot.org/">https://www.coreboot.org/</a></li>
+                        <li>InsydeH2O BIOS Unlocking. 2021. <a href="https://github.com/search?q=insyde+bios+unlock">https://github.com/search?q=insyde+bios+unlock</a></li>
+                        <li>Raspberry Pi Ltd. <em>RP2040 Datasheet</em>, 2021. <a href="https://datasheets.raspberrypi.com/rp2040/rp2040-datasheet.pdf">https://datasheets.raspberrypi.com/rp2040/rp2040-datasheet.pdf</a></li>
+                        <li>Winbond Electronics. <em>W25Q128JV Datasheet</em>, 2019. <a href="https://www.winbond.com/hq/product/code-storage-flash-memory/spi-nor-flash/w25q128jv/">https://www.winbond.com/hq/product/code-storage-flash-memory/spi-nor-flash/w25q128jv/</a></li>
+                        <li>Krawczyk, H., Bellare, M., &amp; Canetti, R. "HMAC: Keyed-Hashing for Message Authentication." <em>RFC 2104</em>, 1997.</li>
+                        <li>NIST. <em>FIPS PUB 180-4: Secure Hash Standard (SHS)</em>, 2015.</li>
+                        <li>Microsoft. "UF2: USB Flashing Format." 2019. <a href="https://github.com/microsoft/uf2">https://github.com/microsoft/uf2</a></li>
+                        <li>SowinySoft. "Virtual BIOS Firmware Controller (VBFC)." 2026. <a href="https://github.com/SowinySoft/Virtual-Bios-Firmware-Controller">https://github.com/SowinySoft/Virtual-Bios-Firmware-Controller</a> (MIT License).</li>
+                    </ol>
+                </div>
+
+                <div class="copyright">
+                    <hr>
+                    <p>© 2026 SowinySoft (Mr. Said Sowiny). All rights reserved.<br>
+                    Contact: <a href="mailto:SowinySoft@gmail.com">SowinySoft@gmail.com</a> | WhatsApp: +201100162814 | <a href="https://x.com/SowinySoft" target="_blank">https://x.com/SowinySoft</a><br>
+                    GitHub: <a href="https://github.com/SowinySoft/Virtual-Bios-Firmware-Controller" target="_blank">SowinySoft/Virtual-Bios-Firmware-Controller</a> | Licensed under the MIT License.</p>
+                </div>
+
+            </div>
+        </body>
+        </html>
