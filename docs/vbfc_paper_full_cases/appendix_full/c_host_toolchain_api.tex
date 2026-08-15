@@ -1,0 +1,132 @@
+%==============================================================================
+% Appendix C: Host Toolchain API
+%==============================================================================
+\section{Host Toolchain API Reference}
+\label{app:host_api}
+
+The \texttt{vbfc-host} tool provides a Python API for programmatic control. This appendix documents the core classes and methods.
+
+\subsection{Device Connection}
+\begin{lstlisting}[style=vbfcStyle, caption={Device Connection}, label={lst:host_connect}]
+from vbfc_host import VBFCDevice, VBFCError
+
+# Auto-detect device on USB
+dev = VBFCDevice.auto_connect()
+
+# Or specify VID/PID/serial
+dev = VBFCDevice.connect(vid=0x2E8A, pid=0x000A, serial="VBFC1234")
+
+print(f"Firmware: {dev.firmware_version}")
+print(f"Flash ID: {dev.flash_id:06X}")
+print(f"Shadow Map Entries: {dev.shadow_map.num_entries}")
+\end{lstlisting}
+
+\subsection{Image Signing}
+\begin{lstlisting}[style=vbfcStyle, caption={Image Signing API}, label={lst:host_sign}]
+from vbfc_host import ImageSigner, SigningKey
+
+# Load provisioning key from keystore
+key = SigningKey.load_from_keystore("provisioning_key", passphrase="secret")
+
+# Sign firmware image
+signer = ImageSigner(key)
+signed_image = signer.sign(
+    payload=open("bios.bin", "rb").read(),
+    image_version=42,
+    algorithm=SigningAlgorithm.HMAC_SHA256
+)
+
+# Write to file
+with open("bios_signed.bin", "wb") as f:
+    f.write(signed_image.to_bytes())
+
+# Verify
+assert signer.verify(signed_image)
+\end{lstlisting}
+
+\subsection{Flash Operations}
+\begin{lstlisting}[style=vbfcStyle, caption={Flash Read/Write}, label={lst:host_flash}]
+# Write signed image to slot 0 (staging)
+dev.flash.write_slot(0, signed_image)
+
+# Verify written data
+assert dev.flash.verify_slot(0, signed_image)
+
+# Read back
+data = dev.flash.read_slot(0, length=len(signed_image))
+\end{lstlisting}
+
+\subsection{Shadow Map Management}
+\begin{lstlisting}[style=vbfcStyle, caption={Shadow Map API}, label={lst:host_shadow}]
+from vbfc_host import ShadowMap, ShadowEntry, RegionType
+
+# Load current map
+sm = dev.shadow_map.read()
+
+# Add entry: map 0x100000-0x1FFFFF to extension offset 0x10000 with patching
+sm.add_entry(ShadowEntry(
+    logical_base=0x100000,
+    logical_limit=0x1FFFFF,
+    physical_offset=0x10000,
+    region_type=RegionType.HYBRID,
+    flags=ShadowFlags.PATCH_ENABLED
+))
+
+# Atomic commit (updates both flash and EEPROM)
+dev.shadow_map.write(sm)
+
+# Set active image slot (updates shadow map base offsets)
+dev.shadow_map.set_active_slot(0)
+\end{lstlisting}
+
+\subsection{Patch Table Management}
+\begin{lstlisting}[style=vbfcStyle, caption={Patch Table API}, label={lst:host_patch}]
+from vbfc_host import PatchTable, PatchEntry
+
+# Create patch table from binary diff
+patches = PatchTable.from_diff(
+    original=open("bios_orig.bin", "rb").read(),
+    modified=open("bios_mod.bin", "rb").read(),
+    region_base=0x100000,
+    region_type=RegionType.HYBRID
+)
+
+# Or manually create entries
+patches.add_entry(PatchEntry(
+    logical_addr=0x123456,
+    patch_mask=0x0F,  # patch all 4 bytes
+    patch_data=bytes([0xEB, 0xFE, 0x90, 0x90])  # jmp short -> NOPs
+))
+
+# Write to flash
+dev.patch_table.write(patches)
+\end{lstlisting}
+
+\subsection{SPI Sniffer}
+\begin{lstlisting}[style=vbfcStyle, caption={Sniffer API}, label={lst:host_sniff}]
+from vbfc_host import SnifferCapture
+
+# Start capture
+cap = dev.sniffer.capture(duration_seconds=30, trigger_command=0x0B)
+
+# Or continuous streaming
+for transaction in dev.sniffer.stream():
+    print(f"CS#{transaction.cs_fall:.6f} {transaction.cmd:02X} "
+          f"addr={transaction.addr:06X} len={len(transaction.data)}")
+
+# Save to CSV
+cap.to_csv("trace.csv")
+
+# Analyze
+print(f"Total transactions: {len(cap.transactions)}")
+print(f"Unique addresses: {len(set(t.addr for t in cap.transactions))}")
+\end{lstlisting}
+
+\subsection{Error Handling}
+All methods raise \texttt{VBFCError} (subclasses: \texttt{ConnectionError}, \texttt{VerificationError}, \texttt{FlashError}, \texttt{TimeoutError}) on failure. Use context managers for automatic cleanup:
+\begin{lstlisting}[style=vbfcStyle, caption={Context Manager Usage}, label={lst:host_context}]
+with VBFCDevice.auto_connect() as dev:
+    dev.flash.write_slot(0, signed_image)
+    dev.shadow_map.set_active_slot(0)
+# Auto-disconnect on exit
+\end{lstlisting}

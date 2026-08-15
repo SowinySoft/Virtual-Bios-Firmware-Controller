@@ -1,0 +1,26 @@
+%==============================================================================
+% Section 2: Background and Related Work
+%==============================================================================
+\section{Background and Related Work}
+\label{sec:background}
+
+\subsection{Firmware Security Landscape}
+Modern x86 firmware comprises multiple components: the \ac{BIOS}/\ac{UEFI} proper (executing on the main CPU), the \ac{ME} (a separate ARC core on the \ac{PCH} with DMA access), and various embedded controllers (\ac{EC}, \ac{TPM}, etc.). The \ac{UEFI} specification~\cite{uefi-spec} defines a modular architecture: \ac{PEI}, \ac{DXE}, and \ac{BDS} phases, with firmware volumes (FVs) containing executable modules, configuration data, and \ac{NVRAM} stores. Vendor-specific extensions (Intel FIT, AMD PSP, etc.) add further complexity.
+
+Firmware attacks fall into several categories: (1) \textit{Persistent implants} modifying \ac{UEFI} modules or \ac{ME} firmware to survive OS reinstall~\cite{kallenberg2015firmware, wormley2018bios, kaspersky2022moonbounce}; (2) \textit{Bootkits} subverting the boot chain before OS load~\cite{rutkowska2008evil}; (3) \textit{Configuration attacks} unlocking hidden menus to disable security features (Secure Boot, \ac{TPM}, \ac{TXT})~\cite{coreboot, insyde-unlock}; (4) \textit{Supply chain/interdiction} attacks modifying firmware in transit~\cite{nsa-ant}. Defenses include: Intel Boot Guard (hardware-verified boot), AMD Platform Secure Boot, Microsoft Secured-core PC requirements, \ac{TPM}-based measured boot (\ac{IMA}, \ac{PCR} extensions), and \ac{SMM} lock mechanisms.
+
+\subsection{SPI Flash and Interposers}
+The \ac{SPI} flash interface is the de facto standard for firmware storage. Typical commands: \texttt{0x03} (Read), \texttt{0x0B} (Fast Read), \texttt{0xEB} (Quad I/O Fast Read), \texttt{0x02} (Page Program), \texttt{0xD8} (Block Erase 64KB), \texttt{0xC7} (Chip Erase). The \ac{PCH} acts as \ac{SPI} master; the flash as slave. Transaction latency is dominated by command/address/dummy cycles; at \SI{50}{MHz} SCK, a 4-byte read takes \SI{\approx 2}{\micro s}.
+
+Existing \ac{SPI} interposers:
+\begin{itemize}
+    \item \textbf{SPISPY}~\cite{spispy}: FPGA-based (Lattice iCE40), passive sniffer only, no active patching, \SI{100}{MHz+} capture.
+    \item \textbf{fSPI}~\cite{fspi}: Raspberry Pi Pico (RP2040) based, supports patching but no cryptographic authentication, limited to \SI{2}{MB} flash.
+    \item \textbf{SPI Flasher}~\cite{spi-flasher}: CH341A-based, offline dump/modify/reflash only.
+    \item \textbf{Glitch/Attack Interposers}~\cite{glitch-interposer}: Focused on voltage/clock glitching, not transparent patching.
+\end{itemize}
+
+The \vbfc distinguishes itself by combining: (a) active in-flight patching at line rate, (b) cryptographic image authentication with hardware-rooted keys, (c) transparent capacity extension via shadow map, (d) passive sniffing for verification, and (e) a complete open-source toolchain.
+
+\subsection{Programmable I/O on RP2040}
+The RP2040's \ac{PIO} subsystem provides deterministic, cycle-accurate bit-banging for custom protocols. Each \ac{PIO} block contains 4 state machines with 32 instructions each, executing at up to \ac{CPU} clock (\SI{133}{MHz} default). \ac{PIO} supports: side-set pins (simultaneous GPIO control), FIFO buffers (TX/RX), IRQ generation, and DMA integration. The \vbfc leverages \ac{PIO} for the \ac{SPI} arbiter state machine, achieving sub-cycle decision latency impossible with interrupt-driven firmware.

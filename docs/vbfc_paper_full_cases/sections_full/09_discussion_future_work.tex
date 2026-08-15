@@ -1,0 +1,60 @@
+%==============================================================================
+% Section 9: Discussion and Future Work
+%==============================================================================
+\section{Discussion and Future Work}
+\label{sec:discussion}
+
+\subsection{Limitations}
+
+\subsubsection{Intel Boot Guard / AMD Platform Secure Boot}
+The \vbfc patches firmware \textit{after} the \ac{PCH} has verified the Initial Boot Block (IBB) via Intel Boot Guard (IBG) or AMD PSB. If the OEM signing key is required for the IBB (typical on modern platforms), the \vbfc cannot modify the IBB itself. It can only patch post-IBB volumes (DXE, BDS, NVRAM). This is a fundamental limitation of any interposer approach: the hardware root of trust in the \ac{PCH} anchors the chain of trust before the \ac{SPI} flash is read. However, most vendor-specific locking (hidden menus, \ac{ME} configuration, \ac{UEFI} variables) resides in post-IBB volumes and is thus patchable.
+
+\subsubsection{QSPI / Octal-SPI Support}
+Current \ac{PCH} generations (600/700 series) use standard \ac{SPI} (single/dual/quad I/O). Future platforms may adopt Octal-SPI (OPI) or HyperBus for higher throughput. The RP2040 \ac{PIO} can support OPI with 8 data lines, but would consume all 30 GPIOs, leaving no pins for USB, mux control, or EEPROM. A future revision using RP2350 (RP2040 successor, more GPIOs) or an FPGA-based arbiter would be needed.
+
+\subsubsection{Single Point of Failure}
+The \vbfc is a single interposer; if it fails (hardware defect, firmware bug), the system may not boot. The bypass jumper mitigates this, but requires physical access. A dual-interposer redundant design (active/standby) is feasible but doubles cost and complexity.
+
+\subsubsection{Side-Channel Leakage}
+While the hardware SHA256 accelerator is constant-time, the overall system (PIO state machines, cache lookups, mux switching) may exhibit timing or power side-channels. A thorough side-channel evaluation (TVLA, higher-order DPA) is needed before deployment in high-assurance environments.
+
+\subsection{Future Work}
+
+\subsubsection{FPGA-Based Arbiter (VBFC-FPGA)}
+An FPGA implementation (Lattice ECP5 or Xilinx Artix-7) would provide:
+\begin{itemize}
+    \item Sub-nanosecond arbitration latency (combinatorial path).
+    \item Full QSPI/OPI support with 8+ data lines.
+    \item Hardened crypto cores (AES-GCM, ECDSA, KMAC) with side-channel countermeasures.
+    \item Multiple independent \ac{SPI} channels (supporting multi-flash platforms).
+    \item Formal verification of the arbiter state machine (Verilog + JasperGold/CoSA).
+\end{itemize}
+This would target enterprise/server platforms where \ac{SPI} frequencies exceed \SI{100}{MHz} and deterministic latency is critical.
+
+\subsubsection{Asymmetric Key Rotation (Phase B)}
+Implementing Phase B ECDSA-P256 verification would enable:
+\begin{itemize}
+    \item Multi-party authorization (vendor + enterprise + user keys).
+    \item Key rotation without physical \vbfc replacement (signed key manifests).
+    \item Integration with certificate transparency logs for auditability.
+\end{itemize}
+The \rp hardware accelerator supports ECC operations; the main effort is secure key storage and manifest parsing.
+
+\subsubsection{Remote Attestation}
+Extending the \vbfc to produce signed attestation reports (via \ac{TPM}-like PCR measurements of the firmware image, shadow map, and patch table) would enable remote verification of device integrity. The \rp could derive an attestation key from the OTP master key and sign a quote structure compatible with TCG TPM 2.0 or AMD SEV-SNP attestation formats.
+
+\subsubsection{Automated Patch Discovery}
+Integrating with firmware analysis frameworks (e.g., \texttt{UEFITool}, \texttt{UEFIRE}, \texttt{IDA Pro} plugins) to automatically identify patchable regions (hidden menus, feature flags, \ac{ME} policy bits) and generate patch tables would lower the barrier for researchers. A "patch marketplace" concept (signed, community-contributed patches with reproducibility hashes) is envisioned.
+
+\subsubsection{Integration with Firmware TPM/Measured Boot}
+The \vbfc could extend \ac{PCR} measurements (via \ac{TPM} 2.0 \texttt{TPM2\_Extend} or \ac{IMA} hooks) to include the hash of the active firmware image and patch set, enabling measured boot to reflect the interposer's modifications transparently.
+
+\subsection{Ethical Considerations}
+The \vbfc enables firmware modification, which can be used for both defensive (security research, feature unlocking, vulnerability mitigation) and offensive (persistent implants, bypassing security controls) purposes. We release this work under the following principles:
+\begin{enumerate}
+    \item \textbf{Transparency:} All designs, source code, and documentation are open. No hidden capabilities.
+    \item \textbf{Accountability:} The cryptographic signing layer ensures modifications are traceable to a provisioning authority.
+    \item \textbf{Defensive Focus:} Documentation and examples emphasize security research, feature unlocking for legitimate owners, and vulnerability mitigation.
+    \item \textbf{No Zero-Day Disclosure:} This work does not disclose unpublished vulnerabilities. It provides a tool; its use is the responsibility of the operator.
+\end{enumerate}
+We encourage responsible disclosure of any vulnerabilities discovered using the \vbfc to the affected vendors.

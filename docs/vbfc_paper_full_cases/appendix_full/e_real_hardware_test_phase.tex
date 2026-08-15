@@ -1,0 +1,391 @@
+%==============================================================================
+% Appendix E: Real Hardware Test Phase — Gigabyte G41 Motherboard
+%==============================================================================
+\section{Real Hardware Test Phase — Gigabyte G41 Motherboard}
+\label{app:real_hw_test}
+
+%--- Document Metadata ---------------------------------------------------------
+\textbf{Document Version:} 1.0 \quad
+\textbf{Target Board:} Gigabyte G41 (LGA 775, ICH7/ICH7R southbridge) \quad
+\textbf{Typical BIOS Chip:} Macronix MX25L6406E or Winbond W25Q64 (8 MB, SOIC-8, 3.3 V) \quad
+\textbf{VBFC Hardware:} Rev 1.2 PCB, RP2040 firmware $\ge$ v0.9.0, \texttt{vbfc-host} $\ge$ 0.9.0
+
+%--- Safety & Recovery First ---------------------------------------------------
+\subsection*{Safety \& Recovery First}
+
+\begin{table}[h]
+\centering
+\caption{Safety Risks and Mitigations}
+\label{tab:safety}
+\begin{tabular}{@{}ll@{}}
+\toprule
+\textbf{Risk} & \textbf{Mitigation} \\
+\midrule
+Bricked board & Keep CH341A programmer + SOIC-8 clip on bench; stock BIOS dump saved \\
+Corrupted SPI traffic & VBFC bypass jumper (JP1) forces stock flash passthrough \\
+ESD damage & Wear wrist strap; work on anti-static mat \\
+Clip misalignment & Verify pin-1 dot on chip matches clip marker before power \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\textbf{Recovery command (if needed):}
+\begin{lstlisting}[style=vbfcStyle, caption={Recovery Command}]
+flashrom -p ch341a_spi -w E:\g41_stock_bios_YYYYMMDD.bin -c "MX25L6406E"
+\end{lstlisting}
+
+%--- Phase 0: Prerequisites Checklist -----------------------------------------
+\subsection*{Phase 0 — Prerequisites Checklist}
+
+\begin{table}[h]
+\centering
+\caption{Prerequisites Checklist}
+\label{tab:prereqs}
+\begin{tabular}{@{}ll@{}}
+\toprule
+\textbf{Item} & \textbf{Done?} \\
+\midrule
+VBFC rev 1.2 assembled \& RP2040 flashed (\texttt{vbfc.uf2}) & $\square$ \\
+\texttt{vbfc-host} installed (\texttt{pip install vbfc-host}) & $\square$ \\
+USB flash drive mounted as \textbf{E:} with $\ge$ 50 MB free & $\square$ \\
+SOIC-8 clip (Pomona 5250 or equiv.) & $\square$ \\
+CH341A programmer + \texttt{flashrom} (Windows) & $\square$ \\
+Target board: Gigabyte G41, BIOS chip identified & $\square$ \\
+Stock BIOS dump saved \& SHA-256 verified & $\square$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+%--- Phase 1: Identify BIOS Chip ----------------------------------------------
+\subsection*{Phase 1 — Identify BIOS Chip}
+
+\begin{lstlisting}[style=vbfcStyle, caption={Identify BIOS Chip}]
+# Run as Administrator
+flashrom -p ch341a_spi -R
+\end{lstlisting}
+
+\textbf{Record:}
+\begin{itemize}
+    \item Vendor/Model: \rule{5cm}{0.4pt} (e.g., \texttt{Macronix MX25L6406E})
+    \item Capacity: \rule{5cm}{0.4pt} (expected 8 MB = 8,388,608 bytes)
+    \item Package: SOIC-8, 150 mil
+    \item Pin-1 orientation: \rule{5cm}{0.4pt}
+\end{itemize}
+
+This determines shadow map capacity and supported SPI commands.
+
+%--- Phase 2: Dump Stock BIOS -------------------------------------------------
+\subsection*{Phase 2 — Dump Stock BIOS (Baseline)}
+
+\begin{lstlisting}[style=vbfcStyle, caption={Dump Stock BIOS}]
+flashrom -p ch341a_spi -r E:\g41_stock_bios_YYYYMMDD.bin -c "MX25L6406E"
+\end{lstlisting}
+
+\textbf{Verify:}
+\begin{lstlisting}[style=vbfcStyle]
+dir E:\g41_stock_bios_*.bin
+certutil -hashfile E:\g41_stock_bios_*.bin SHA256
+\end{lstlisting}
+
+\begin{itemize}
+    \item File size must be \textbf{8,388,608 bytes} (8 MB)
+    \item Save SHA-256 hash: \rule{6cm}{0.4pt}
+\end{itemize}
+
+%--- Phase 3: Prepare Modified Firmware ---------------------------------------
+\subsection*{Phase 3 — Prepare Modified Firmware}
+
+\begin{enumerate}
+    \item Open \texttt{E:\textbackslash g41\_stock\_bios\_*.bin} in \textbf{UEFITool} (v0.28+).
+    \item Locate target region (G41 typical layout):
+    \begin{itemize}
+        \item \textbf{Setup DXE driver}: GUID \texttt{899407D7-99FE-43D8-9A21-79EC328CAC21} (or search ``Setup'')
+        \item \textbf{Boot logo / POST text}: in \texttt{FV\_MAIN} or \texttt{FV\_SUPV}
+        \item \textbf{ME region}: G41/ICH7 usually \textbf{no ME} — skip unless present
+    \end{itemize}
+    \item Extract region $\to$ modify binary (example: unlock hidden menu):
+    \begin{itemize}
+        \item Find conditional jump suppressing ``Advanced'' tab
+        \item Patch \texttt{74 XX} $\to$ \texttt{EB XX} (JZ $\to$ JMP short)
+    \end{itemize}
+    \item Save \textbf{full modified image} as \texttt{E:\textbackslash g41\_modified\_bios.bin}.
+\end{enumerate}
+
+%--- Phase 4: Provision VBFC --------------------------------------------------
+\subsection*{Phase 4 — Provision VBFC}
+
+\begin{lstlisting}[style=vbfcStyle, caption={Provision VBFC}]
+# 1. Connect VBFC via USB-C to Windows PC
+# 2. Sign modified image (version 1 = first deployment)
+vbfc-host sign --input E:\g41_modified_bios.bin --output E:\g41_signed_bios.bin --version 1
+
+# 3. Flash to VBFC extension flash (slot 0 = active)
+vbfc-host flash --image E:\g41_signed_bios.bin --slot 0
+
+# 4. Configure shadow map for 8 MB chip
+#    Region 0: 0x000000-0x0FFFFF (PEI/SEC) -> original flash
+#    Region 1: 0x100000-0x1FFFFF (Setup DXE) -> hybrid + patching
+#    Region 2: 0x200000-0x7FFFFF (rest) -> extension flash
+vbfc-host shadow add --base 0x000000 --limit 0x0FFFFF --type original --offset 0x000000
+vbfc-host shadow add --base 0x100000 --limit 0x1FFFFF --type hybrid --offset 0x100000 --patch-enable
+vbfc-host shadow add --base 0x200000 --limit 0x7FFFFF --type extension --offset 0x200000
+vbfc-host shadow commit
+
+# 5. Verify
+vbfc-host info
+vbfc-host verify --slot 0
+\end{lstlisting}
+
+\textbf{Expected \texttt{vbfc-host info} output:}
+\begin{lstlisting}[style=vbfcStyle]
+Firmware: 0.9.0
+Flash ID: 0xEF4017 (W25Q128) or 0xC22017 (MX25L128)
+Shadow Map Entries: 3
+  [0] 0x000000-0x0FFFFF -> ORIGINAL @ 0x000000
+  [1] 0x100000-0x1FFFFF -> HYBRID @ 0x100000 (patch enabled)
+  [2] 0x200000-0x7FFFFF -> EXTENSION @ 0x200000
+\end{lstlisting}
+
+%--- Phase 5: Wire VBFC to Motherboard ----------------------------------------
+\subsection*{Phase 5 — Wire VBFC to Motherboard}
+
+\begin{table}[h]
+\centering
+\caption{VBFC to Motherboard Wiring}
+\label{tab:wiring}
+\begin{tabular}{@{}cccccl@{}}
+\toprule
+\textbf{VBFC Pin} & \textbf{SOIC-8 Pin} & \textbf{Clip Pin} & \textbf{Signal} & \textbf{Notes} \\
+\midrule
+CS\#      & 1 & 1 & CS\#    & Active low \\
+SCK       & 6 & 6 & CLK     & 50 MHz max \\
+MOSI      & 5 & 5 & DI      & Board $\to$ VBFC $\to$ chip \\
+MISO      & 2 & 2 & DO      & \textbf{VBFC drives this} \\
+VCC       & 8 & 8 & 3.3 V   & From board \\
+GND       & 4 & 4 & GND     & Common \\
+WP\#      & 3 & 3 & WP\#    & Leave floating (VBFC pulls high) \\
+HOLD\#    & 7 & 7 & HOLD\#  & Leave floating (VBFC pulls high) \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\textbf{Physical steps:}
+\begin{enumerate}
+    \item Power OFF motherboard, unplug ATX PSU cord.
+    \item Align clip pin-1 marker with chip pin-1 dot ($\triangle$ or notch).
+    \item Press clip firmly — verify all 8 pins contact.
+    \item Connect VBFC ribbon to clip.
+    \item Connect VBFC USB-C to \textbf{same Windows PC} (power + sniffer).
+    \item \textbf{Double-check} clip seating before power.
+\end{enumerate}
+
+%--- Phase 6: First Boot (Sniffer Mode) ---------------------------------------
+\subsection*{Phase 6 — First Boot (Sniffer Mode)}
+
+\begin{lstlisting}[style=vbfcStyle, caption={Start Sniffer Capture}]
+# Start capture BEFORE power-on
+vbfc-host sniff --duration 60 --output E:\boot_trace_1.csv
+\end{lstlisting}
+
+\begin{enumerate}
+    \item Flip ATX PSU switch ON.
+    \item Press motherboard power button.
+    \item Observe:
+    \begin{itemize}
+        \item POST code display (if port 80 card)
+        \item Serial console (UART header, 115200 8N1)
+        \item VBFC LED: should blink rapidly during SPI traffic
+    \end{itemize}
+    \item Let boot proceed to BIOS setup or OS loader.
+    \item Stop sniffer: \texttt{Ctrl+C}
+\end{enumerate}
+
+\textbf{Quick trace check:}
+\begin{lstlisting}[style=vbfcStyle]
+head -30 E:\boot_trace_1.csv
+\end{lstlisting}
+
+Look for normal SPI sequence: \texttt{0x03}/\texttt{0x0B} reads, addresses 0x000000 $\to$ 0x7FFFFF, no timeouts.
+
+%--- Phase 7: Functional Validation -------------------------------------------
+\subsection*{Phase 7 — Functional Validation}
+
+\begin{table}[h]
+\centering
+\caption{Functional Validation Tests}
+\label{tab:func_val}
+\begin{tabular}{@{}lll@{}}
+\toprule
+\textbf{Test} & \textbf{Procedure} & \textbf{Pass Criteria} \\
+\midrule
+Cold boot & ATX off 10 s $\to$ on & POST completes, no hangs \\
+BIOS entry & Press \texttt{Del} / \texttt{F2} during POST & Setup utility enters \\
+Hidden menu & Navigate to ``Advanced'' tab & \textbf{Visible \& functional} \\
+Save \& Exit & F10 $\to$ Yes & Clean reboot \\
+USB boot & Insert Windows/Linux USB, select boot & OS loader starts \\
+5$\times$ cold reboot & ATX off/on $\times$ 5 & All 5 consistent \\
+5$\times$ warm reset & Reset button $\times$ 5 & All 5 consistent \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\textbf{If any test fails:}
+\begin{enumerate}
+    \item Power off immediately (ATX switch).
+    \item Check sniffer trace for anomalies.
+    \item Verify shadow map addresses match patched region.
+    \item Set VBFC bypass jumper (JP1) $\to$ board boots stock BIOS.
+\end{enumerate}
+
+%--- Phase 8: Stress & Edge Cases ---------------------------------------------
+\subsection*{Phase 8 — Stress \& Edge Cases}
+
+\begin{lstlisting}[style=vbfcStyle, caption={Stress Tests}]
+# 1. Rapid reboot loop (20x)
+for /L %i in (1,1,20) do (
+  shutdown /r /t 0 /f
+  timeout 30
+)
+
+# 2. Warm reset spam
+#    Press reset button 10x rapidly -- all should POST
+
+# 3. Idle SPI capture (OS runtime)
+vbfc-host sniff --duration 60 --output E:\idle_trace.csv
+#    Should show near-zero SPI traffic after boot
+\end{lstlisting}
+
+%--- Phase 9: Green Checklist (Final Acceptance) ------------------------------
+\subsection*{Phase 9 — Green Checklist (Final Acceptance)}
+
+\begin{table}[h]
+\centering
+\caption{Final Acceptance Criteria}
+\label{tab:green_checklist}
+\begin{tabular}{@{}clccl@{}}
+\toprule
+\textbf{\#} & \textbf{Criterion} & \textbf{Pass/Fail} & \textbf{Notes} \\
+\midrule
+1 & Stock BIOS dump SHA-256 matches vendor & $\square$ & \\
+2 & Modified image boots to BIOS setup & $\square$ & \\
+3 & Target hidden menu \textbf{unlocked \& functional} & $\square$ & \\
+4 & 5 consecutive cold boots succeed & $\square$ & \\
+5 & 5 consecutive warm resets succeed & $\square$ & \\
+6 & No SPI errors in sniffer (timeouts, bad CRC) & $\square$ & \\
+7 & Bypass jumper (JP1) works -- stock BIOS boots & $\square$ & \\
+8 & ME region (if any) untouched / clean & $\square$ & N/A on G41 \\
+9 & VBFC LED shows expected activity pattern & $\square$ & \\
+10 & Power-cycle survival (ATX off 10 s $\to$ on) $\times$ 3 & $\square$ & \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\textbf{All 10 = GREEN $\to$ Experiment finalized.}
+
+%--- Phase 10: Cleanup & Documentation ----------------------------------------
+\subsection*{Phase 10 — Cleanup \& Documentation}
+
+\textbf{1. Archive on E::}
+\begin{lstlisting}[style=vbfcStyle]
+E:\
+|-- g41_stock_bios_YYYYMMDD.bin          (original, 8 MB)
+|-- g41_modified_bios.bin                (patched)
+|-- g41_signed_bios.bin                  (signed, 8 MB + 256 B header)
+|-- boot_trace_1.csv                     (first boot)
+|-- idle_trace.csv                       (OS idle)
+|-- vbfc_info.txt                        (vbfc-host info output)
+`-- photos/                              (wiring, clip, board)
+\end{lstlisting}
+
+\textbf{2. Restore stock BIOS} (if returning board to service):
+\begin{lstlisting}[style=vbfcStyle]
+flashrom -p ch341a_spi -w E:\g41_stock_bios_YYYYMMDD.bin -c "MX25L6406E"
+\end{lstlisting}
+
+\textbf{3. Remove VBFC}, store in anti-static bag.
+
+\textbf{4. Record results in test log:}
+\begin{itemize}
+    \item Board serial: \rule{5cm}{0.4pt}
+    \item BIOS chip: \rule{5cm}{0.4pt}
+    \item Patch applied: \rule{5cm}{0.4pt}
+    \item Test date: \rule{5cm}{0.4pt}
+    \item Tester: \rule{5cm}{0.4pt}
+    \item Result: \textbf{PASS / FAIL}
+\end{itemize}
+
+%--- Appendix A: Quick Reference Card -----------------------------------------
+\subsection*{Appendix A — Quick Reference Card (Print \& Tape to Bench)}
+
+\begin{lstlisting}[style=vbfcStyle]
+VBFC TEST FLOW -- G41
+=====================
+1. DUMP stock (CH341A) -> verify SHA256
+2. PATCH in UEFITool -> save modified.bin
+3. SIGN + FLASH -> vbfc-host sign/flash
+4. SHADOW MAP -> original / hybrid / extension
+5. CLIP ON -> CS#/SCK/MOSI/MISO/VCC/GND
+6. SNIFFER ON -> vbfc-host sniff
+7. POWER ON -> observe POST
+8. TEST -> BIOS menu, 5x reboot, 3x power-cycle
+9. PASS? -> archive, restore stock if needed
+10. FAIL? -> bypass jumper, check trace, iterate
+\end{lstlisting}
+
+%--- Appendix B: G41 BIOS Chip Pinout -----------------------------------------
+\subsection*{Appendix B — Common G41 BIOS Chip Pinout (SOIC-8)}
+
+\begin{lstlisting}[style=vbfcStyle]
+    Pin 1
+   +---------+
+CS# |1     8| VCC
+MISO|2     7| HOLD#
+WP# |3     6| SCK
+GND |4     5| MOSI
+   +---------+
+\end{lstlisting}
+
+\begin{itemize}
+    \item \textbf{CS\#} = Chip Select (active low)
+    \item \textbf{MISO} = Master In Slave Out (VBFC drives this line)
+    \item \textbf{WP\#} / \textbf{HOLD\#} = pulled high by VBFC when active
+\end{itemize}
+
+%--- Appendix C: Troubleshooting Quick Guide ----------------------------------
+\subsection*{Appendix C — Troubleshooting Quick Guide}
+
+\begin{table}[h]
+\centering
+\caption{Troubleshooting Quick Guide}
+\label{tab:troubleshooting}
+\begin{tabular}{@{}lll@{}}
+\toprule
+\textbf{Symptom} & \textbf{Likely Cause} & \textbf{Action} \\
+\midrule
+No POST, black screen & Clip misaligned / bad contact & Reseat clip, verify pin-1 \\
+Garbled BIOS text & MISO contention (both driving) & Check WP\#/HOLD\# pulled high \\
+Boot loops at POST code & Shadow map address mismatch & Verify region bounds in \texttt{vbfc-host info} \\
+Sniffer shows timeouts & SCK too fast / signal integrity & Check ribbon cable, reduce SCK in firmware \\
+Hidden menu still locked & Patched wrong region / offset & Re-analyze in UEFITool, check region base \\
+VBFC LED solid red & Firmware fault / auth fail & Check \texttt{vbfc-host verify}, re-sign image \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+%--- Revision History ---------------------------------------------------------
+\subsection*{Revision History}
+
+\begin{table}[h]
+\centering
+\caption{Revision History}
+\label{tab:revision}
+\begin{tabular}{@{}cccl@{}}
+\toprule
+\textbf{Version} & \textbf{Date} & \textbf{Author} & \textbf{Changes} \\
+\midrule
+1.0 & 2026-08-10 & VBFC Team & Initial release for G41 test phase \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\noindent\textbf{End of Document} — Proceed phase by phase. Capture sniffer trace at each step for traceability.

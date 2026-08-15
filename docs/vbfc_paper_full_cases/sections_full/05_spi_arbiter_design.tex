@@ -1,0 +1,148 @@
+%==============================================================================
+% Section 5: SPI Arbiter Design
+%==============================================================================
+\section{\ac{SPI} Arbiter Design}
+\label{sec:spi_arbiter}
+
+The \ac{SPI} arbiter is the core real-time component of the \vbfc, implemented entirely in the \rp \ac{PIO} subsystem to achieve cycle-accurate transaction processing without CPU intervention. It must decode \ac{PCH} commands, perform address translation, route \texttt{MISO} data from the correct source, and apply patches --- all within the \ac{SPI} clock period constraints.
+
+\subsection{\ac{PIO} State Machine Architecture}
+The \rp \ac{PIO} provides 2 blocks $\times$ 4 state machines = 8 SMs total. The arbiter allocates:
+\begin{itemize}
+    \item \textbf{SM0 (Command Decoder):} Monitors \texttt{CS\#} and \texttt{SCK}, shifts in command byte, classifies transaction type.
+    \item \textbf{SM1 (Address Capture):} Shifts in 24-bit address (3 bytes), triggers shadow map lookup via IRQ to CPU.
+    \item \textbf{SM2 (Data Phase Router):} Drives \texttt{MISO} output from selected source (original flash passthrough, extension flash via QSPI, or patch cache).
+    \item \textbf{SM3 (Dummy Cycle Counter):} Counts dummy cycles for Fast Read commands (mode-dependent).
+    \item \textbf{SM4--7:} Reserved for sniffer (parallel capture), future QSPI/Dual-SPI support.
+\end{itemize}
+
+\begin{figure}[t]
+\centering
+\begin{tikzpicture}[
+    node distance=6mm and 4mm,
+    state/.style={
+        draw, rounded corners=3pt, thick,
+        fill=white, minimum height=8mm, minimum width=22mm,
+        drop shadow={shadow xshift=0.5pt, shadow yshift=-0.5pt, opacity=0.1}
+    },
+    decision/.style={
+        draw, diamond, aspect=2.5, thick,
+        fill=vbfcBlue!10, minimum height=8mm, minimum width=18mm,
+        drop shadow={shadow xshift=0.5pt, shadow yshift=-0.5pt, opacity=0.1}
+    },
+    arrow/.style={-Stealth, thick, draw=vbfcDarkBlue},
+    labelstyle/.style={font=\footnotesize, text=vbfcDarkGray},
+    edgelabel/.style={font=\scriptsize, text=vbfcAccent, sloped}
+]
+
+\node[state] (idle) {\begin{tabular}{c}IDLE\\\texttt{CS\#=1}\end{tabular}};
+\node[state, right=of idle] (cmd) {\begin{tabular}{c}CMD\\\texttt{Shift 8-bit cmd}\end{tabular}};
+\node[decision, right=of cmd] (cmd_dec) {Cmd Type?};
+\node[state, above right=of cmd_dec] (addr) {\begin{tabular}{c}ADDR\\\texttt{Shift 24-bit addr}\end{tabular}};
+\node[state, right=of addr] (dummy) {\begin{tabular}{c}DUMMY\\\texttt{Count cycles}\end{tabular}};
+\node[decision, right=of dummy] (route) {Region Type?};
+\node[state, above right=of route] (orig) {\begin{tabular}{c}ORIGINAL\\\texttt{Passthrough MISO}\end{tabular}};
+\node[state, right=of route] (ext) {\begin{tabular}{c}EXTENSION\\\texttt{QSPI Read}\end{tabular}};
+\node[state, below right=of route] (hybrid) {\begin{tabular}{c}HYBRID\\\texttt{QSPI + Patch}\end{tabular}};
+\node[state, below=of route] (done) {\begin{tabular}{c}DATA DONE\\\texttt{CS\#=1}\end{tabular}};
+
+\draw[arrow] (idle) -- node[above, labelstyle] {$CS\#\downarrow$} (cmd);
+\draw[arrow] (cmd) -- (cmd_dec);
+\draw[arrow] (cmd_dec) -- node[edgelabel] {Read cmds} (addr);
+\draw[arrow] (cmd_dec) -- +(0,-10mm) node[below, labelstyle] {Write/Erase$\to$ Passthrough} (done);
+\draw[arrow] (addr) -- (dummy);
+\draw[arrow] (dummy) -- (route);
+\draw[arrow] (route) -- node[edgelabel] {ORIGINAL} (orig);
+\draw[arrow] (route) -- node[edgelabel] {EXTENSION} (ext);
+\draw[arrow] (route) -- node[edgelabel] {HYBRID} (hybrid);
+\draw[arrow] (orig) -- (done);
+\draw[arrow] (ext) -- (done);
+\draw[arrow] (hybrid) -- (done);
+\draw[arrow] (done) -- +(0,-8mm) -| node[near start, left, labelstyle] {$CS\#\uparrow$} (idle);
+
+% Patch lookup annotation
+\node[draw, rounded corners=2pt, fill=vbfcOrange!15, font=\scriptsize, text=vbfcDarkGray, 
+      anchor=north west] at (hybrid.south east) {
+    \begin{tabular}{@{}l@{}}
+    \textbf{Patch Lookup:} Direct-mapped cache\\
+    (32 entries, 4-byte key = addr[11:2])\\
+    Hit: drive patched byte\\
+    Miss: drive QSPI byte
+    \end{tabular}
+};
+
+\end{tikzpicture}
+\caption{\ac{SPI} Arbiter State Machine. The PIO state machines decode the command, capture the address, perform shadow map lookup (via CPU IRQ for region type), count dummy cycles, then route the data phase. For HYBRID regions, a direct-mapped patch cache provides O(1) hot-patch application.}
+\label{fig:arbiter_fsm}
+\end{figure}
+
+\subsection{Transaction Classification}
+The \ac{PCH} issues standard \ac{SPI} commands. The arbiter recognizes:
+\begin{table}[h]
+\centering
+\caption{Supported \ac{SPI} Commands and Handling}
+\label{tab:spi_commands}
+\begin{tabular}{@{}clll@{}}
+\toprule
+\textbf{Opcode} & \textbf{Command} & \textbf{Address Bytes} & \textbf{Arbiter Handling} \\
+\midrule
+0x03  & Read                      & 3 & Full decode, route per shadow map \\
+0x0B  & Fast Read                 & 3 & + 8 dummy cycles, route per shadow map \\
+0xEB  & Quad I/O Fast Read        & 3 & + 6 dummy + 2 mode, route (QSPI) \\
+0xBB  & Dual I/O Fast Read        & 3 & + 4 dummy + 2 mode, route (Dual) \\
+0x02  & Page Program              & 3 & Passthrough to original flash only \\
+0xD8  & Block Erase (64KB)        & 3 & Passthrough to original flash only \\
+0xC7  & Chip Erase                & 0 & Passthrough to original flash only \\
+0x05  & Read Status Register      & 0 & Synthesized from extension flash \\
+0x9F  & Read JEDEC ID             & 0 & Synthesized (vendor/device ID) \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Write/erase commands are \textit{always} passed through to the original flash --- the \vbfc does not support modifying the original chip. This design choice simplifies the threat model and avoids wear on the OEM flash.
+
+\subsection{Shadow Map Lookup and Region Resolution}
+Upon address capture (end of ADDR phase), SM1 asserts an IRQ to the CPU core. The CPU performs a linear search of the shadow map (max 16 entries, \SI{<50}{ns} in \ac{SRAM}) and writes the region type and physical offset to a shared mailbox register. SM2 polls this register before entering the DATA phase. This CPU-assisted lookup adds \SI{\approx 200}{ns} latency, well within the dummy cycle budget of Fast Read commands (\SI{8}{cycles} @ \SI{50}{MHz} = \SI{160}{ns} per cycle).
+
+\subsection{In-Flight Byte Patching Engine}
+For HYBRID regions, the arbiter applies per-byte substitutions from a patch table. The patch table is stored in extension flash and cached in a direct-mapped cache in \rp \ac{SRAM}:
+\begin{itemize}
+    \item \textbf{Cache Organization:} 32 entries, each holding 4 consecutive bytes (32-bit word). Index = \texttt{addr[6:2]} (64-byte granularity).
+    \item \textbf{Tag:} \texttt{addr[31:7]} (upper address bits).
+    \item \textbf{Valid Bit:} Set on cache fill.
+    \item \textbf{Lookup:} On DATA phase, SM2 checks cache. Hit $\to$ drive patched bytes from cache. Miss $\to$ drive from QSPI, trigger background cache fill via DMA.
+\end{itemize}
+
+The patch table format in extension flash:
+\begin{lstlisting}[style=vbfcStyle, caption={Patch Table Entry (8 bytes)}, label={lst:patch_entry}]
+struct patch_entry {
+    uint32_t logical_addr;  // 4-byte aligned address
+    uint32_t patch_mask;    // Bitmask: 1 = patch this byte
+    uint8_t  patch_data[4]; // Replacement bytes (valid where mask=1)
+};
+\end{lstlisting}
+
+A patch entry with \texttt{patch\_mask = 0xF} replaces all 4 bytes; \texttt{0x1} replaces only byte 0. This allows efficient encoding of both single-byte patches (e.g., flipping a conditional jump) and multi-byte patches (e.g., replacing a whole instruction sequence).
+
+\subsection{Timing Analysis}
+\begin{table}[h]
+\centering
+\caption{Arbiter Latency Budget (@ \SI{50}{MHz} SCK)}
+\label{tab:timing_budget}
+\begin{tabular}{@{}llr@{}}
+\toprule
+\textbf{Phase} & \textbf{Operation} & \textbf{Cycles} \\
+\midrule
+CMD      & Shift 8 bits (MOSI) & 8 \\
+ADDR     & Shift 24 bits       & 24 \\
+DUMMY    & Fast Read (0x0B)    & 8 \\
+LOOKUP   & CPU shadow map search & $\sim$100 (async, during dummy) \\
+DATA     & First byte out (MISO) & 1 (from cache/QSPI) \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The critical path is the first DATA byte after dummy cycles. With the patch cache hit, SM2 drives \texttt{MISO} combinatorially from \ac{SRAM} (registered output), meeting setup/hold at \SI{50}{MHz}. QSPI reads use the \rp hardware XIP interface with 2-cycle latency, also within budget. Worst-case cache miss adds \SI{\approx 2}{\micro s} for DMA fill, but subsequent bytes in the same 64-byte line hit.
+
+\subsection{Passive SPI Sniffer}
+SM4--5 operate in parallel, capturing \texttt{CS\#}, \texttt{SCK}, \texttt{MOSI}, \texttt{MISO} at \SI{133}{MHz} (oversampled). Data is packed into 64-bit words (4 signals $\times$ 16 cycles) and pushed to a ring buffer in \ac{SRAM} (\SI{8}{KB}, 1024 entries). The CPU drains the buffer via USB on demand. The sniffer adds zero latency to the arbiter path and operates in all modes including bypass.

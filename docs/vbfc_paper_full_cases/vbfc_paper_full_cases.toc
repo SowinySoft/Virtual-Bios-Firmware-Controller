@@ -1,0 +1,100 @@
+\contentsline {section}{\numberline {1}Introduction}{3}{section.1}%
+\contentsline {section}{\numberline {2}Background and Related Work}{4}{section.2}%
+\contentsline {subsection}{\numberline {2.1}Firmware Security Landscape}{4}{subsection.2.1}%
+\contentsline {subsection}{\numberline {2.2}SPI Flash and Interposers}{4}{subsection.2.2}%
+\contentsline {subsection}{\numberline {2.3}Programmable I/O on RP2040}{4}{subsection.2.3}%
+\contentsline {section}{\numberline {3}Threat Model}{5}{section.3}%
+\contentsline {subsection}{\numberline {3.1}System Assets}{5}{subsection.3.1}%
+\contentsline {subsection}{\numberline {3.2}Adversary Capabilities ($\mathcal {A}$)}{5}{subsection.3.2}%
+\contentsline {subsection}{\numberline {3.3}Adversary Limitations}{5}{subsection.3.3}%
+\contentsline {subsection}{\numberline {3.4}Security Goals}{6}{subsection.3.4}%
+\contentsline {subsection}{\numberline {3.5}Out of Scope}{6}{subsection.3.5}%
+\contentsline {section}{\numberline {4}System Architecture}{6}{section.4}%
+\contentsline {subsection}{\numberline {4.1}Physical Interposer Design}{6}{subsection.4.1}%
+\contentsline {subsection}{\numberline {4.2}Shadow Map: Transparent Region Remapping}{7}{subsection.4.2}%
+\contentsline {subsection}{\numberline {4.3}Operational Modes}{7}{subsection.4.3}%
+\contentsline {section}{\numberline {5}\ac {SPI} Arbiter Design}{8}{section.5}%
+\contentsline {subsection}{\numberline {5.1}\ac {PIO} State Machine Architecture}{8}{subsection.5.1}%
+\contentsline {subsection}{\numberline {5.2}Transaction Classification}{8}{subsection.5.2}%
+\contentsline {subsection}{\numberline {5.3}Shadow Map Lookup and Region Resolution}{8}{subsection.5.3}%
+\contentsline {subsection}{\numberline {5.4}In-Flight Byte Patching Engine}{9}{subsection.5.4}%
+\contentsline {subsection}{\numberline {5.5}Timing Analysis}{10}{subsection.5.5}%
+\contentsline {subsection}{\numberline {5.6}Passive SPI Sniffer}{10}{subsection.5.6}%
+\contentsline {section}{\numberline {6}Security Architecture}{10}{section.6}%
+\contentsline {subsection}{\numberline {6.1}Signed Image Header Format}{10}{subsection.6.1}%
+\contentsline {subsection}{\numberline {6.2}Phase A: HMAC-SHA256 (Deployed)}{10}{subsection.6.2}%
+\contentsline {subsection}{\numberline {6.3}Phase B: ECDSA-P256 (Reserved)}{11}{subsection.6.3}%
+\contentsline {subsection}{\numberline {6.4}Key Management and Provisioning}{11}{subsection.6.4}%
+\contentsline {subsection}{\numberline {6.5}Threat Mitigation Summary}{12}{subsection.6.5}%
+\contentsline {section}{\numberline {7}Implementation}{12}{section.7}%
+\contentsline {subsection}{\numberline {7.1}RP2040 Firmware}{12}{subsection.7.1}%
+\contentsline {subsubsection}{\numberline {7.1.1}PIO Assembly: SPI Arbiter}{12}{subsubsection.7.1.1}%
+\contentsline {subsubsection}{\numberline {7.1.2}Cryptographic Engine}{12}{subsubsection.7.1.2}%
+\contentsline {subsection}{\numberline {7.2}Extension Flash Layout}{13}{subsection.7.2}%
+\contentsline {subsection}{\numberline {7.3}Host Toolchain: \texttt {vbfc-host}}{13}{subsection.7.3}%
+\contentsline {subsubsection}{\numberline {7.3.1}Image Signing Workflow}{13}{subsubsection.7.3.1}%
+\contentsline {subsubsection}{\numberline {7.3.2}Patch Generation}{14}{subsubsection.7.3.2}%
+\contentsline {subsection}{\numberline {7.4}Hardware Bill of Materials}{14}{subsection.7.4}%
+\contentsline {section}{\numberline {8}Evaluation}{14}{section.8}%
+\contentsline {subsection}{\numberline {8.1}Experimental Setup}{14}{subsection.8.1}%
+\contentsline {subsection}{\numberline {8.2}Functional Correctness}{15}{subsection.8.2}%
+\contentsline {subsubsection}{\numberline {8.2.1}UEFI Firmware Patching}{15}{subsubsection.8.2.1}%
+\contentsline {subsubsection}{\numberline {8.2.2}ME Region Neutralization}{15}{subsubsection.8.2.2}%
+\contentsline {subsubsection}{\numberline {8.2.3}Capacity Extension}{15}{subsubsection.8.2.3}%
+\contentsline {subsection}{\numberline {8.3}Performance Evaluation}{15}{subsection.8.3}%
+\contentsline {subsubsection}{\numberline {8.3.1}Boot Time Overhead}{15}{subsubsection.8.3.1}%
+\contentsline {subsubsection}{\numberline {8.3.2}SPI Transaction Latency}{16}{subsubsection.8.3.2}%
+\contentsline {subsubsection}{\numberline {8.3.3}Throughput}{16}{subsubsection.8.3.3}%
+\contentsline {subsection}{\numberline {8.4}Security Evaluation}{16}{subsection.8.4}%
+\contentsline {subsubsection}{\numberline {8.4.1}Image Rejection Tests}{16}{subsubsection.8.4.1}%
+\contentsline {subsubsection}{\numberline {8.4.2}Side-Channel Resistance}{16}{subsubsection.8.4.2}%
+\contentsline {subsubsection}{\numberline {8.4.3}Glitch Resistance}{16}{subsubsection.8.4.3}%
+\contentsline {subsection}{\numberline {8.5}Usability and Developer Experience}{17}{subsection.8.5}%
+\contentsline {section}{\numberline {9}Discussion and Future Work}{17}{section.9}%
+\contentsline {subsection}{\numberline {9.1}Limitations}{17}{subsection.9.1}%
+\contentsline {subsubsection}{\numberline {9.1.1}Intel Boot Guard / AMD Platform Secure Boot}{17}{subsubsection.9.1.1}%
+\contentsline {subsubsection}{\numberline {9.1.2}QSPI / Octal-SPI Support}{17}{subsubsection.9.1.2}%
+\contentsline {subsubsection}{\numberline {9.1.3}Single Point of Failure}{17}{subsubsection.9.1.3}%
+\contentsline {subsubsection}{\numberline {9.1.4}Side-Channel Leakage}{17}{subsubsection.9.1.4}%
+\contentsline {subsection}{\numberline {9.2}Future Work}{17}{subsection.9.2}%
+\contentsline {subsubsection}{\numberline {9.2.1}FPGA-Based Arbiter (VBFC-FPGA)}{17}{subsubsection.9.2.1}%
+\contentsline {subsubsection}{\numberline {9.2.2}Asymmetric Key Rotation (Phase B)}{18}{subsubsection.9.2.2}%
+\contentsline {subsubsection}{\numberline {9.2.3}Remote Attestation}{18}{subsubsection.9.2.3}%
+\contentsline {subsubsection}{\numberline {9.2.4}Automated Patch Discovery}{18}{subsubsection.9.2.4}%
+\contentsline {subsubsection}{\numberline {9.2.5}Integration with Firmware TPM/Measured Boot}{18}{subsubsection.9.2.5}%
+\contentsline {subsection}{\numberline {9.3}Ethical Considerations}{18}{subsection.9.3}%
+\contentsline {section}{\numberline {10}Conclusion}{19}{section.10}%
+\contentsline {section}{\numberline {A}Signed Image Header Format (256 Bytes)}{19}{appendix.A}%
+\contentsline {section}{\numberline {B}Shadow Map Data Structure}{20}{appendix.B}%
+\contentsline {subsection}{\numberline {B.1}Shadow Map Header (Extension Flash)}{21}{subsection.B.1}%
+\contentsline {subsection}{\numberline {B.2}Shadow Map Entry (16 bytes)}{21}{subsection.B.2}%
+\contentsline {subsection}{\numberline {B.3}Flags Field}{21}{subsection.B.3}%
+\contentsline {subsection}{\numberline {B.4}Example Shadow Map Configuration}{21}{subsection.B.4}%
+\contentsline {subsection}{\numberline {B.5}Shadow Map Lookup Algorithm}{22}{subsection.B.5}%
+\contentsline {subsection}{\numberline {B.6}Atomic Shadow Map Updates}{22}{subsection.B.6}%
+\contentsline {section}{\numberline {C}Host Toolchain API Reference}{22}{appendix.C}%
+\contentsline {subsection}{\numberline {C.1}Device Connection}{22}{subsection.C.1}%
+\contentsline {subsection}{\numberline {C.2}Image Signing}{23}{subsection.C.2}%
+\contentsline {subsection}{\numberline {C.3}Flash Operations}{23}{subsection.C.3}%
+\contentsline {subsection}{\numberline {C.4}Shadow Map Management}{23}{subsection.C.4}%
+\contentsline {subsection}{\numberline {C.5}Patch Table Management}{24}{subsection.C.5}%
+\contentsline {subsection}{\numberline {C.6}SPI Sniffer}{24}{subsection.C.6}%
+\contentsline {subsection}{\numberline {C.7}Error Handling}{24}{subsection.C.7}%
+\contentsline {section}{\numberline {D}Hardware Bill of Materials and Schematics}{25}{appendix.D}%
+\contentsline {subsection}{\numberline {D.1}Complete Bill of Materials}{25}{subsection.D.1}%
+\contentsline {subsection}{\numberline {D.2}Schematic Overview}{26}{subsection.D.2}%
+\contentsline {subsubsection}{\numberline {D.2.1}Sheet 1: RP2040 Core}{26}{subsubsection.D.2.1}%
+\contentsline {subsubsection}{\numberline {D.2.2}Sheet 2: SPI Interposer Path}{26}{subsubsection.D.2.2}%
+\contentsline {subsubsection}{\numberline {D.2.3}Sheet 3: Extension Flash \& EEPROM}{26}{subsubsection.D.2.3}%
+\contentsline {subsubsection}{\numberline {D.2.4}Sheet 4: USB-C \& Power}{27}{subsubsection.D.2.4}%
+\contentsline {subsection}{\numberline {D.3}PCB Layout Constraints}{27}{subsection.D.3}%
+\contentsline {subsection}{\numberline {D.4}Assembly Notes}{27}{subsection.D.4}%
+\contentsline {subsection}{\numberline {D.5}Design Files}{27}{subsection.D.5}%
+\contentsline {section}{\numberline {E}Real Hardware Test Phase — Gigabyte G41 Motherboard}{28}{appendix.E}%
+\contentsline {section}{Six Case Studies Addendum}{34}{table.caption.55}%
+\contentsline {subsection}{\numberline {J.1}Case Study 1: FPGA SPI Arbiter}{34}{subsection.J.1}%
+\contentsline {subsection}{\numberline {J.2}Case Study 2: ECDSA Key Rotation (Phase B)}{34}{subsection.J.2}%
+\contentsline {subsection}{\numberline {J.3}Case Study 3: Remote Attestation}{34}{subsection.J.3}%
+\contentsline {subsection}{\numberline {J.4}Case Study 4: Automated Patch Discovery}{34}{subsection.J.4}%
+\contentsline {subsection}{\numberline {J.5}Case Study 5: TPM/Measured Boot Integration}{35}{subsection.J.5}%
+\contentsline {subsection}{\numberline {J.6}Case Study 6: RP2350 Rev 2 Hardware Spec}{35}{subsection.J.6}%

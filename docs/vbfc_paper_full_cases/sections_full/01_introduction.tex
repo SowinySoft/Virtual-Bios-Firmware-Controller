@@ -1,0 +1,30 @@
+%==============================================================================
+% Section 1: Introduction
+%==============================================================================
+\section{Introduction}
+\label{sec:introduction}
+
+The \ac{BIOS} (or \ac{UEFI}) firmware is the first code executed on any x86 platform, initializing hardware, establishing the \ac{TCB}, and loading the operating system bootloader. It resides in a dedicated \ac{SPI} flash chip connected to the \ac{PCH} and executes at the highest privilege level (\ac{SMM}, ring -2/3), invisible to the OS and hypervisor. This privileged position makes firmware an attractive target for persistent implants~\cite{kallenberg2015firmware, wormley2018bios} and a critical layer for defensive measures~\cite{nist2018sp800-193, microsoft2020secured-core}.
+
+Despite its importance, firmware remains opaque to most stakeholders. Vendors lock configuration menus, omit source code, and sign images with keys users cannot replace. Security researchers face a high barrier to entry: external \ac{SPI} programmers (e.g., Dediprog SF600, CH341A) require physical disassembly, risk bricking, and lack real-time observation capabilities. Existing open-source interposers~\cite{spispy, fspi, spi-flasher} either operate offline (dump/modify/reflash cycle) or lack cryptographic integrity guarantees, making them unsuitable for production or untrusted environments.
+
+We present the \acf{vbfc} (\vbfc), a programmable \ac{SPI} interposer that addresses these gaps through a novel combination of real-time in-flight patching, cryptographic image authentication, and transparent region remapping. The \vbfc sits physically between the \ac{PCH} and the original \ac{SPI} flash (SOIC-8 package) via a compact interposer \ac{PCB}, requiring no soldering on target platforms with socketed or clip-accessible flash. It is built on the \rp dual-core Cortex-M0+ microcontroller and a \wq extension flash, providing \SI{16}{MB} of authenticated storage for modified firmware images.
+
+\noindent\textbf{Contributions.}
+\begin{enumerate}
+    \item \textbf{Real-time \ac{SPI} arbiter with in-flight patching:} A cycle-accurate state machine implemented in \rp \ac{PIO} that decodes \ac{PCH} transactions, routes reads to either the original flash or extension flash based on a shadow map, and applies per-byte patches from a cached patch table with sub-microsecond latency (\secref{sec:spi_arbiter}).
+    
+    \item \textbf{Cryptographic signing layer with anti-rollback:} A 256-byte signed-image header (\appref{app:signed_header}) using \ac{HMAC}-\ac{SHA}256 (Phase A) and reserved ECDSA-P256 (Phase B) that binds firmware images to a hardware-rooted key, enforces monotonic versioning, and prevents unauthorized or downgraded image injection (\secref{sec:security}).
+    
+    \item \textbf{Shadow map for transparent region remapping:} A compact data structure (\appref{app:shadow_map}) stored in both the 24C02 \ac{EEPROM} and extension flash that maps logical \ac{PCH} address ranges to physical locations across the original and extension flash, enabling seamless extension of firmware capacity beyond the original chip size (\secref{sec:architecture}).
+    
+    \item \textbf{Passive \ac{SPI} sniffer and host toolchain:} A non-intrusive bus monitor capturing full transaction traces (command, address, data) with timestamps, exposed via a USB-C \ac{CLI} for forensic verification, plus a Python-based provisioning toolchain (\texttt{vbfc-host}) for image signing, patch generation, and deployment (\secref{sec:implementation}, \appref{app:host_api}).
+    
+    \item \textbf{Open-source reference implementation:} Complete hardware design (\ac{PCB}, schematics, BOM), \rp firmware (C + \ac{PIO} assembly), and host software (Python/CLI) released under MIT license~\cite{vbfc-github}.
+\end{enumerate}
+
+\noindent\textbf{Threat Model Scope.}
+The \vbfc assumes an adversary with: (a) physical access to the interposer device (but not the provisioning host), (b) ability to observe \ac{SPI} bus traffic, (c) capability to inject modified firmware images into the extension flash. It does \textit{not} protect against: (i) \ac{PCH} microcode-level attacks, (ii) \ac{ME}/Intel Boot Guard enforced signing if the OEM key is required (the \vbfc patches \textit{after} signature verification by the \ac{PCH}), (iii) invasive package-level attacks on the \rp itself. A detailed threat model is presented in \secref{sec:threat_model}.
+
+\noindent\textbf{Paper Organization.}
+\secref{sec:background} surveys related work in firmware security and \ac{SPI} interposers. \secref{sec:threat_model} formalizes the threat model. \secref{sec:architecture} presents the system architecture and shadow map. \secref{sec:spi_arbiter} details the \ac{SPI} arbiter state machine and patching engine. \secref{sec:security} describes the cryptographic signing layer. \secref{sec:implementation} covers firmware and host toolchain implementation. \secref{sec:evaluation} reports experimental results on physical hardware. \secref{sec:discussion} discusses limitations and future work. \secref{sec:conclusion} concludes.
